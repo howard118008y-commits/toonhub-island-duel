@@ -16,3 +16,7 @@
 @media(min-width:640px){.carousel-figure.role-left{transform:translateX(-50%) translateY(-120px) scale(1)!important}}
 @media(max-width:639px) and (max-height:720px){.carousel-figure.role-center{transform:translateX(-50%) translateY(-24px) scale(.92)!important}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}.carousel-arrow:not(:disabled):hover{transform:none}}
+
+/* Keep the full brand and the card-game introduction legible on small screens. */
+.brand-name{white-space:nowrap}.brand-label{font-size:18px;letter-spacing:.35px}.brand-label small{font-size:10px;letter-spacing:.2px;line-height:1.6}.game-topbar h2{white-space:nowrap}
+@media(max-width:639px){.brand-label{font-size:14px;letter-spacing:0;gap:7px}.brand-label small{font-size:10px;letter-spacing:0}}

@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight } from 'lucide-react';
 import { CHARACTERS, type Character } from './characters';
 import { patternImage } from './patterns';
 
+const BRAND_NAME = 'Card & TW ＆ Game';
 const TRANSITION_MS = 650;
 const EASING = 'cubic-bezier(0.4,0,0.2,1)';
 const SHEETS = [...new Set(CHARACTERS.map(character => character.sheet))];
@@ -108,7 +109,7 @@ export default function App() {
         <h1 className={`ghost-text absolute inset-x-0 flex items-center justify-center pointer-events-none select-none ${activeCharacter.region.length > 2 ? 'long-region' : ''}`}>{activeCharacter.region}</h1>
 
         <header className="site-header">
-          <div className="brand-label"><span className="brand-mark" aria-hidden="true">嶼</span><span>島嶼對決<small>二十四種日常，一座島的冒險。</small></span></div>
+          <div className="brand-label"><span className="brand-mark" aria-hidden="true">嶼</span><span className="brand-name">{BRAND_NAME}<small>24位臺灣地域角色，選12張組牌。<br />4個戰場席位，挑戰電腦對手。</small></span></div>
           <button className="play-trigger" type="button" onClick={openGame}>開始卡牌對戰 <ArrowUpRight size={16} strokeWidth={1.8} aria-hidden="true" /></button>
         </header>
 
@@ -143,8 +144,8 @@ export default function App() {
 
       <dialog ref={gameDialog} className="game-dialog" aria-labelledby="game-title">
         <div className="game-shell">
-          <header className="game-topbar"><div><h2 id="game-title">島嶼對決</h2><span>你的對局會保留，隨時回來繼續。</span></div><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回首頁</button></header>
-          {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}game/index.html`} title="島嶼對決 — 臺灣地域卡牌對戰" onLoad={() => sendTheme(activeCharacter)} />}
+          <header className="game-topbar"><div><h2 id="game-title">{BRAND_NAME}</h2><span>你的對局會保留，隨時回來繼續。</span></div><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回首頁</button></header>
+          {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}game/index.html`} title={`${BRAND_NAME} — 臺灣地域卡牌對戰`} onLoad={() => sendTheme(activeCharacter)} />}
         </div>
       </dialog>
     </div>

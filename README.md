@@ -1,6 +1,6 @@
-# 島嶼對決｜台灣地域角色卡牌
+# Card & TW ＆ Game｜臺灣地域卡牌對戰
 
-以 React、TypeScript、Vite、Tailwind CSS 與 lucide-react 製作的台灣地域 Q 版公仔輪播首頁，結合可直接遊玩的卡牌遊戲。首頁展示 24 位地域角色，地區、職業、台詞與介面採繁體中文；首頁與遊戲共用角色圖像，並同步主題配色與背景圖案，支援桌面及手機。
+從24位臺灣地域角色中選12張組牌，在4個戰場席位中出牌、攻擊，挑戰電腦對手。首頁展示角色的地區、職業與台詞，並與遊戲同步角色圖像、配色與背景圖案；支援桌面及手機，返回首頁後可繼續原有對局。
 
 [網站](https://howard118008y-commits.github.io/toonhub-island-duel/) · [GitHub 專案](https://github.com/howard118008y-commits/toonhub-island-duel)
 

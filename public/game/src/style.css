@@ -179,3 +179,7 @@ dialog .button-outline { border-color:var(--ink); }
   .home-page { overflow-x:clip; }
 }
 @media (prefers-reduced-motion:reduce) { body { transition:none; } }
+
+/* Preserve the complete brand without crowding the game controls. */
+.brand-name{white-space:nowrap}.hero-copy h1.game-brand-title{font-size:clamp(26px,3.4vw,43px);line-height:1.2;letter-spacing:-.03em;white-space:nowrap}
+@media(max-width:600px){.brand{font-size:11px;letter-spacing:0;gap:6px}}
