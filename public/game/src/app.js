@@ -45,6 +45,9 @@ const art = card => {
   const source = new URL(`../../characters/regions-${sheet}.png`, import.meta.url).href;
   return `--character-art:url('${source}');--art-x:${cell % 3 * 50}%;--art-y:${Math.floor(cell / 3) * 100}%`;
 };
+const portrait = card => card.id <= 24
+  ? `<img class="card-portrait" src="${escape(new URL(`../../characters/portrait-${String(card.id).padStart(2, '0')}.png`, import.meta.url).href)}" width="1024" height="1536" alt="" loading="lazy" decoding="async" draggable="false">`
+  : '';
 
 function cardView(card, options = {}) {
   const { mode = 'collection', uid = '', unit = null, selected = false, disabled = false, reason = '', target = false, action = 'inspect', detail = true, enemy = false } = options;
@@ -56,7 +59,7 @@ function cardView(card, options = {}) {
   return `<div class="${classes}" data-card-uid="${escape(uid)}">
     <button class="card-main" type="button" data-action="${action}" data-id="${card.id}" data-uid="${escape(uid)}" ${disabled ? 'disabled' : ''} ${mode === 'collection' ? `aria-pressed="${selected}"` : ''} aria-label="${escape(`${card.region}，${actionLabel}，${card.job}，${card.cost}費，${combat.attack}攻擊，${health}生命。${card.description}${reason ? `。${reason}` : ''}`)}" title="${escape(reason || card.quote)}">
       <span class="card-top"><span class="cost" aria-label="${card.cost}費">${card.cost}</span><span class="card-region">${escape(card.region)}</span><span class="card-index">${String(card.id).padStart(2, '0')}</span></span>
-      <span class="card-art${card.id <= 24 ? ' card-art-regional' : ''}" style="${art(card)}" role="img" aria-label="${escape(`${card.region} ${card.job}角色插圖`)}"></span>
+      <span class="card-art${card.id <= 24 ? ' card-art-regional' : ''}" style="${art(card)}" role="img" aria-label="${escape(`${card.region} ${card.job}角色插圖`)}">${portrait(card)}</span>
       <span class="card-body"><strong class="card-job">${escape(card.job)}</strong><span class="keywords">${keywords(card)}</span><span class="card-skill">${escape(card.description)}</span></span>
       <span class="card-stats"><span class="stat attack-stat">${icon('sword')}<b>${combat.attack}</b></span><span class="card-set">島嶼守護者</span><span class="stat health-stat ${unit && unit.hp < unit.maxHp ? 'is-hurt' : ''}">${icon('heart')}<b>${health}</b></span></span>
       ${mode === 'collection' && selected ? `<span class="selected-ribbon">${icon('check')}已加入</span>` : ''}
@@ -171,7 +174,7 @@ function closeModal() {
 function showDetails(id) {
   const card = getCard(Number(id));
   if (!card) return;
-  showModal(`<div class="card-detail"><div class="detail-portrait"><span class="card-art${card.id <= 24 ? ' card-art-regional' : ''}" style="${art(card)}" role="img" aria-label="${escape(card.job)}"></span><span class="detail-region">${escape(card.region)}</span></div><div class="detail-copy"><p class="eyebrow">${escape(card.zone || '島嶼守護者')}</p><h2 id="dialog-title">${escape(card.job)}</h2><blockquote>「${escape(card.quote)}」</blockquote><div class="detail-stats"><span><b>${card.cost}</b>費用</span><span><b>${card.attack}</b>攻擊</span><span><b>${card.health}</b>生命</span></div><div class="keywords">${keywords(card)}</div><p class="detail-skill">${escape(card.description)}</p>${card.keywords.includes('guard') ? '<p class="detail-note">守護：敵人必須優先攻擊有守護的角色。</p>' : ''}${card.keywords.includes('rush') ? '<p class="detail-note">快攻：進場當回合即可攻擊。</p>' : '<p class="detail-note">進場後等待一回合，每回合可攻擊一次。</p>'}</div></div>`);
+  showModal(`<div class="card-detail"><div class="detail-portrait"><span class="card-art${card.id <= 24 ? ' card-art-regional' : ''}" style="${art(card)}" role="img" aria-label="${escape(card.job)}">${portrait(card)}</span><span class="detail-region">${escape(card.region)}</span></div><div class="detail-copy"><p class="eyebrow">${escape(card.zone || '島嶼守護者')}</p><h2 id="dialog-title">${escape(card.job)}</h2><blockquote>「${escape(card.quote)}」</blockquote><div class="detail-stats"><span><b>${card.cost}</b>費用</span><span><b>${card.attack}</b>攻擊</span><span><b>${card.health}</b>生命</span></div><div class="keywords">${keywords(card)}</div><p class="detail-skill">${escape(card.description)}</p>${card.keywords.includes('guard') ? '<p class="detail-note">守護：敵人必須優先攻擊有守護的角色。</p>' : ''}${card.keywords.includes('rush') ? '<p class="detail-note">快攻：進場當回合即可攻擊。</p>' : '<p class="detail-note">進場後等待一回合，每回合可攻擊一次。</p>'}</div></div>`);
 }
 
 function showRules() {
@@ -265,6 +268,9 @@ document.addEventListener('click', event => {
   }
 });
 
+document.addEventListener('load', event => {
+  if (event.target.matches?.('.card-portrait')) event.target.parentElement.classList.add('has-portrait');
+}, true);
 document.addEventListener('toggle', event => {
   if (event.target.matches?.('.battle-log')) logOpen = event.target.open;
 }, true);

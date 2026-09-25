@@ -22,7 +22,7 @@ npm run build
 npm run preview
 ```
 
-正式網站輸出至 `dist/`；`public/game/` 會一併複製為 `dist/game/`，包含遊戲頁面、樣式、卡牌資料、規則引擎與角色圖像。遊戲本身是靜態 JavaScript，無須另啟遊戲伺服器。
+正式網站輸出至 `dist/`；`public/game/` 與 `public/characters/` 會一併複製為 `dist/game/` 與 `dist/characters/`，包含遊戲頁面、樣式、卡牌資料、規則引擎與人物素材。遊戲本身是靜態 JavaScript，無須另啟遊戲伺服器。
 
 GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `base: './'`，首頁資產與 iframe 的相對路徑可保留部署子路徑，變更儲存庫名稱時無須修改。若改用絕對 `base`，則須與部署網址一致，並確認首頁及 `game/` 都能載入。
 
@@ -45,15 +45,10 @@ GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `ba
 
 ## 地域角色與本地素材
 
-24 位公仔依原有台灣地域圖鑑的個性、服裝及道具設定生成；地區、職業與台詞保留原稿，由頁面以繁體中文呈現，沒有將文字渲染進人物圖像。
+本版採用 24 張獨立的 1024 × 1536 透明 PNG 立體潮玩人物，存放於 `public/characters/portrait-01.png` 至 `portrait-24.png`，依卡牌編號對應地域角色。地區、職業與台詞保留原稿，由頁面以繁體中文呈現，沒有將文字渲染進人物圖像。
 
-| 本地圖像 | 角色編號 |
-| --- | --- |
-| `public/characters/regions-01.png` | 01–06：天母、信義、中和、永和、基隆、桃園 |
-| `public/characters/regions-02.png` | 07–12：新竹市、竹北、苗栗、台中、彰化、南投 |
-| `public/characters/regions-03.png` | 13–18：雲林、嘉義市、嘉義縣、台南、高雄、屏東 |
-| `public/characters/regions-04.png` | 19–24：宜蘭、花蓮、台東、澎湖、金門、馬祖 |
+首頁與遊戲共用這組直式人物素材，等比例顯示；卡牌詳情呈現完整人物，小型戰場與手牌可裁切少量下緣。舊 `regions-01.png` 至 `regions-04.png` 圖集僅作獨立圖片尚未載入時的備援；`public/game/assets/character-atlas.png` 保留供編號 101「掌中戲偶」使用。
 
-每張圖像為 1536 × 1024 的透明 PNG，以 3 欄 × 2 列排列；每格 512 × 512，按編號由左至右、由上至下對應角色。首頁與遊戲從同一組本地素材顯示人物，圖像會隨網站一併部署。
+美術方向與每位角色的最終生成提示詞見 [立體潮玩角色美術紀錄](art-direction-v2.md)。
 
 人物個性、技能與台詞均為創作設定；地域文化與網路印象不是對全體居民的判定。

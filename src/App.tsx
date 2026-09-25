@@ -6,20 +6,20 @@ import { patternImage } from './patterns';
 const BRAND_NAME = 'Card & TW ＆ Game';
 const TRANSITION_MS = 650;
 const EASING = 'cubic-bezier(0.4,0,0.2,1)';
-const SHEETS = [...new Set(CHARACTERS.map(character => character.sheet))];
+const portraitUrl = (id: number) => `${import.meta.env.BASE_URL}characters/portrait-${String(id).padStart(2, '0')}.png`;
 type Role = 'center' | 'left' | 'right' | 'back' | 'hidden';
 
 function figureStyle(role: Role, isMobile: boolean): CSSProperties {
   const shared: CSSProperties = {
-    position: 'absolute', aspectRatio: '1',
+    position: 'absolute', aspectRatio: '2 / 3',
     transition: `transform ${TRANSITION_MS}ms ${EASING}, filter ${TRANSITION_MS}ms ${EASING}, opacity ${TRANSITION_MS}ms ${EASING}, left ${TRANSITION_MS}ms ${EASING}, height ${TRANSITION_MS}ms ${EASING}, bottom ${TRANSITION_MS}ms ${EASING}`,
     willChange: 'transform, filter, opacity',
     transform: 'translateX(-50%) scale(1)',
   };
-  if (role === 'center') return { ...shared, transform: `translateX(-50%) scale(${isMobile ? 1.02 : 1.08})`, filter: 'blur(0px)', opacity: 1, zIndex: 20, left: '50%', height: isMobile ? '61%' : '86%', bottom: isMobile ? '23%' : '0%' };
-  if (role === 'back') return { ...shared, filter: 'blur(2px)', opacity: 0.6, zIndex: 5, left: isMobile ? '74%' : '69%', height: isMobile ? '15%' : '20%', bottom: isMobile ? '66%' : '54%' };
+  if (role === 'center') return { ...shared, filter: 'blur(0px)', opacity: 1, zIndex: 20, left: '50%', height: isMobile ? '124%' : '130%', bottom: isMobile ? '-37%' : '-35%' };
+  if (role === 'back') return { ...shared, filter: 'blur(3px)', opacity: 0.8, zIndex: 5, left: isMobile ? '78%' : '77%', height: isMobile ? '17%' : '25%', bottom: isMobile ? '64%' : '57%' };
   if (role === 'hidden') return { ...shared, filter: 'blur(4px)', opacity: 0, zIndex: 0, left: '50%', height: isMobile ? '13%' : '20%', bottom: isMobile ? '40%' : '20%' };
-  return { ...shared, filter: 'blur(1px)', opacity: 0.85, zIndex: 10, left: role === 'left' ? (isMobile ? '16%' : '25%') : (isMobile ? '84%' : '78%'), height: isMobile ? '20%' : '25%', bottom: isMobile ? '38%' : '18%' };
+  return { ...shared, filter: 'blur(1.5px)', opacity: 0.9, zIndex: 10, left: role === 'left' ? (isMobile ? '13%' : '20%') : (isMobile ? '87%' : '82%'), height: isMobile ? '23%' : '36%', bottom: isMobile ? '35%' : role === 'left' ? '34%' : '14%' };
 }
 
 export default function App() {
@@ -28,6 +28,10 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   const [hasOpenedGame, setHasOpenedGame] = useState(false);
   const [loadedSheets, setLoadedSheets] = useState<Set<string>>(() => new Set());
+  const [loadedPortraits, setLoadedPortraits] = useState<Set<number>>(() => new Set());
+  const portraitRequests = useRef(new Set<number>());
+  const sheetRequests = useRef(new Set<string>());
+  const mounted = useRef(false);
   const animationTimer = useRef<number | null>(null);
   const animationLock = useRef(false);
   const gameDialog = useRef<HTMLDialogElement>(null);
@@ -35,20 +39,40 @@ export default function App() {
   const activeCharacter = CHARACTERS[activeIndex];
 
   useEffect(() => {
-    let mounted = true;
-    SHEETS.forEach(sheet => {
-      const image = new Image();
-      image.onload = () => { if (mounted) setLoadedSheets(previous => new Set(previous).add(sheet)); };
-      image.src = `${import.meta.env.BASE_URL}characters/${sheet}`;
-    });
+    mounted.current = true;
     const onResize = () => setIsMobile(window.innerWidth < 640);
     window.addEventListener('resize', onResize);
     return () => {
-      mounted = false;
+      mounted.current = false;
       window.removeEventListener('resize', onResize);
       if (animationTimer.current !== null) window.clearTimeout(animationTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    [0, -1, 1, 2, 3].forEach(offset => {
+      const character = CHARACTERS[(activeIndex + offset + CHARACTERS.length) % CHARACTERS.length];
+      if (portraitRequests.current.has(character.id)) return;
+      portraitRequests.current.add(character.id);
+      const image = new Image();
+      image.decoding = 'async';
+      image.fetchPriority = offset === 0 ? 'high' : 'low';
+      image.onload = () => {
+        if (mounted.current) setLoadedPortraits(previous => new Set(previous).add(character.id));
+      };
+      image.onerror = () => {
+        if (sheetRequests.current.has(character.sheet)) return;
+        sheetRequests.current.add(character.sheet);
+        const fallback = new Image();
+        fallback.fetchPriority = 'low';
+        fallback.onload = () => {
+          if (mounted.current) setLoadedSheets(previous => new Set(previous).add(character.sheet));
+        };
+        fallback.src = `${import.meta.env.BASE_URL}characters/${character.sheet}`;
+      };
+      image.src = portraitUrl(character.id);
+    });
+  }, [activeIndex]);
 
   function sendTheme(character: Character) {
     const { id: cardId, bg, panel, ink, accent, pattern } = character;
@@ -102,8 +126,8 @@ export default function App() {
   } as CSSProperties;
 
   return (
-    <div className="island-site relative w-full overflow-hidden" style={themeStyle} data-pattern={activeCharacter.pattern}>
-      <main className="hero relative w-full overflow-hidden" aria-label="臺灣地域角色輪播">
+    <div className="island-site relative w-full overflow-clip" style={themeStyle} data-pattern={activeCharacter.pattern}>
+      <main className="hero relative w-full overflow-clip" aria-label="臺灣地域角色輪播">
         <div className="hero-pattern absolute inset-0 pointer-events-none" aria-hidden="true" />
         <div className="grain absolute inset-0 pointer-events-none" aria-hidden="true" />
         <h1 className={`ghost-text absolute inset-x-0 flex items-center justify-center pointer-events-none select-none ${activeCharacter.region.length > 2 ? 'long-region' : ''}`}>{activeCharacter.region}</h1>
@@ -118,9 +142,13 @@ export default function App() {
             const role = getRole(index);
             return (
               <div key={character.id} className={`carousel-figure role-${role}`} style={figureStyle(role, isMobile)} data-role={role} data-card-id={character.id} aria-hidden={role !== 'center'}>
-                <div className="character-sprite" role="img" aria-label={`${character.region}・${character.job}`} style={{ backgroundImage: loadedSheets.has(character.sheet) ? `url("${import.meta.env.BASE_URL}characters/${character.sheet}")` : undefined, backgroundPosition: `${character.spriteX}% ${character.spriteY}%` }}>
-                  {!loadedSheets.has(character.sheet) && <div className="sprite-placeholder"><span>{character.region}</span><small>角色插圖載入中</small></div>}
-                </div>
+                {loadedPortraits.has(character.id) ? (
+                  <img className="character-portrait" src={portraitUrl(character.id)} alt={`${character.region}・${character.job}`} draggable={false} decoding="async" fetchPriority={role === 'center' ? 'high' : 'low'} />
+                ) : (
+                  <div className="character-sprite" role="img" aria-label={`${character.region}・${character.job}`} style={{ backgroundImage: loadedSheets.has(character.sheet) ? `url("${import.meta.env.BASE_URL}characters/${character.sheet}")` : undefined, backgroundPosition: `${character.spriteX}% ${character.spriteY}%` }}>
+                    {!loadedSheets.has(character.sheet) && <div className="sprite-placeholder"><span>{character.region}</span><small>角色插圖載入中</small></div>}
+                  </div>
+                )}
                 {role !== 'center' && role !== 'hidden' && <span className="companion-name">{character.region}</span>}
               </div>
             );
