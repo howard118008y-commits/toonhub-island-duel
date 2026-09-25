@@ -1,6 +1,6 @@
-# TOONHUB × 島嶼對決
+# 島嶼對決｜台灣地域角色卡牌
 
-以 React、TypeScript、Vite、Tailwind CSS 與 lucide-react 製作的 TOONHUB 公仔輪播首頁，結合可直接遊玩的台灣地域卡牌遊戲。首頁四位公仔以 650 毫秒切換位置、大小、模糊程度與背景色，支援桌面及手機。
+以 React、TypeScript、Vite、Tailwind CSS 與 lucide-react 製作的台灣地域 Q 版公仔輪播首頁，結合可直接遊玩的卡牌遊戲。首頁展示 24 位地域角色，地區、職業、台詞與介面採繁體中文；首頁與遊戲共用角色圖像，並同步主題配色與背景圖案，支援桌面及手機。
 
 [網站](https://howard118008y-commits.github.io/toonhub-island-duel/) · [GitHub 專案](https://github.com/howard118008y-commits/toonhub-island-duel)
 
@@ -43,17 +43,17 @@ GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `ba
 
 點選手牌出牌，再選擇能攻擊的我方角色與敵方目標。守護角色必須優先被攻擊，快攻角色可在進場當回合攻擊；角色另有抽牌、治療、增益、傷害與召喚等技能。結束回合後由電腦對手行動，牌庫用盡會累加疲勞傷害，直到分出勝負。
 
-## 外部圖片與字體
+## 地域角色與本地素材
 
-首頁依規格直接使用以下四張 Figma Site 圖片，並在載入時預先載入：
+24 位公仔依原有台灣地域圖鑑的個性、服裝及道具設定生成；地區、職業與台詞保留原稿，由頁面以繁體中文呈現，沒有將文字渲染進人物圖像。
 
-| 圖片 | 背景色 | 原始來源 |
-| --- | --- | --- |
-| 1 | `#F4845F` | [公仔圖片 1](https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/1.02464a56.png) |
-| 2 | `#6BBF7A` | [公仔圖片 2](https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/2.b977faab.png) |
-| 3 | `#E882B4` | [公仔圖片 3](https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/3.4df853b4.png) |
-| 4 | `#6EB5FF` | [公仔圖片 4](https://fifth-gentle-45902158.figma.site/_components/v2/4de492f6d9cf8244ad5293233e5c6f52407d42fc/4.4457fbce.png) |
+| 本地圖像 | 角色編號 |
+| --- | --- |
+| `public/characters/regions-01.png` | 01–06：天母、信義、中和、永和、基隆、桃園 |
+| `public/characters/regions-02.png` | 07–12：新竹市、竹北、苗栗、台中、彰化、南投 |
+| `public/characters/regions-03.png` | 13–18：雲林、嘉義市、嘉義縣、台南、高雄、屏東 |
+| `public/characters/regions-04.png` | 19–24：宜蘭、花蓮、台東、澎湖、金門、馬祖 |
 
-`index.html` 透過 [Google Fonts 樣式表](https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap) 載入 **Anton** 與 **Inter**，字體檔由 `fonts.gstatic.com` 提供。
+每張圖像為 1536 × 1024 的透明 PNG，以 3 欄 × 2 列排列；每格 512 × 512，按編號由左至右、由上至下對應角色。首頁與遊戲從同一組本地素材顯示人物，圖像會隨網站一併部署。
 
-首頁圖片與字體需要網路及來源站台持續提供服務；卡牌遊戲的角色圖像則隨網站一起部署。外部圖片仍屬其原權利人所有，本專案未另行授予其使用權。
+人物個性、技能與台詞均為創作設定；地域文化與網路印象不是對全體居民的判定。

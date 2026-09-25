@@ -86,3 +86,96 @@ dialog{position:fixed;max-width:min(640px,calc(100% - 32px));max-height:calc(100
   .hero-player,.hero-player.player{padding-top:4px;padding-bottom:5px}
   .turn-controls{padding-top:8px;padding-bottom:8px}
 }
+
+/* The parent carousel changes only these theme variables, never the match. */
+:root {
+  --theme-bg:#F4845F; --theme-panel:#F79B7F; --theme-ink:#203C32; --theme-accent:#843B25;
+  --felt:var(--theme-bg); --felt-deep:var(--theme-bg); --ink:var(--theme-ink);
+  --cream:#FFF9EC; --paper:#FFF3DC; --gold:var(--theme-accent); --gold-dark:var(--theme-accent);
+  --muted:var(--ink); --line:color-mix(in srgb,var(--ink) 25%,transparent);
+  --surface:color-mix(in srgb,var(--theme-panel) 22%,var(--cream));
+  color:var(--ink); background:var(--theme-bg);
+}
+body { position:relative; isolation:isolate; background:var(--theme-bg); color:var(--ink); transition:background-color .65s; }
+body::before,body::after { content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; }
+body::before { background-image:var(--motif); background-size:160px 160px; opacity:.095; }
+body::after { opacity:.4; background-size:200px 200px; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='paper'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.08' filter='url(%23paper)'/%3E%3C/svg%3E"); }
+button:focus-visible,summary:focus-visible { outline:3px solid var(--theme-accent); outline-offset:4px; }
+.site-header { border-bottom:2px solid var(--ink); }
+.brand,.brand small,.quiet-button,.eyebrow,.hero-copy h1,.hero-tagline,.turn-guidance>strong,.hand-heading strong { color:var(--ink); }
+.brand-seal { color:var(--cream); background:var(--ink); border-color:var(--ink); box-shadow:3px 3px 0 var(--theme-accent); }
+.brand small { letter-spacing:1.5px; }
+.quiet-button:hover { color:var(--ink); background:color-mix(in srgb,var(--cream) 35%,transparent); }
+.hero-copy h1 { text-shadow:3px 4px 0 color-mix(in srgb,var(--cream) 58%,transparent); }
+.hero-description,.header-note,.ready-note,.showcase-top,.showcase-bottom,.home-footer,.selection-help,.hero-name>strong>span,.hero-resources,.hero-health small,.action-message,.hand-heading,.hand-heading strong span,.battle-bottom>span { color:var(--muted); }
+.eyebrow>span,.tiny-dot { background:var(--theme-accent); }
+.button { border:2px solid var(--ink); border-radius:8px; box-shadow:3px 3px 0 var(--ink); }
+.button-primary { color:var(--cream); background:var(--ink); }
+.button-primary:not(:disabled):hover { color:var(--cream); background:var(--theme-accent); box-shadow:3px 5px 0 var(--ink); }
+.button-primary:not(:disabled):active { box-shadow:1px 1px 0 var(--ink); }
+.button-outline,.button-outline:hover { color:var(--ink); background:var(--surface); border-color:var(--ink); }
+.button:disabled { opacity:.5; box-shadow:none; }
+.deck-count { background:var(--theme-panel); color:var(--ink); border-color:var(--line); }
+.compass-ring { border:2px solid var(--ink); background:var(--theme-panel); box-shadow:12px 12px 0 color-mix(in srgb,var(--theme-accent) 25%,transparent); }
+.compass-ring:before,.compass-ring:after { color:var(--ink); background:var(--theme-panel); }
+.home-rules { border-color:var(--ink); }
+.home-rules strong,.rule-number { color:var(--ink); }
+.home-footer { border-color:var(--line); }
+.card-main { border:2px solid var(--ink); background:var(--theme-panel); box-shadow:3px 3px 0 color-mix(in srgb,var(--ink) 65%,transparent); }
+.card-main:before { border-color:color-mix(in srgb,var(--ink) 18%,transparent); }
+.card-top,.card-body { background:var(--cream); }
+.card-art { background-color:var(--surface); }
+.card-art-regional { display:grid; place-items:center; background-image:none; }
+.card-art-regional::before { content:""; display:block; width:100%; aspect-ratio:1; background-image:var(--character-art); background-size:300% 200%; background-position:var(--art-x) var(--art-y); background-repeat:no-repeat; }
+.cost { color:var(--cream); background:var(--ink); border-color:var(--cream); outline-color:var(--ink); box-shadow:1px 2px 0 var(--theme-accent); }
+.card-index,.card-skill,.card-set { color:var(--muted); }
+.card-body { border-top-color:var(--line); }
+.card-stats { background:var(--theme-panel); }
+.attack-stat { color:#68430F; }
+.health-stat,.hero-health .icon { color:#8C2C38; }
+.health-stat.is-hurt { color:#A10E22; }
+.card-info,.card-info:hover { color:var(--ink); background:var(--cream); border-color:var(--ink); box-shadow:1px 2px 0 var(--line); }
+.keyword { color:#245437; background:#DCEBCA; }
+.keyword.rush { color:#793C16; background:#FFDDA4; }
+.card.is-selected .card-main,.card.is-target .card-main { border-color:var(--theme-accent); box-shadow:0 0 0 3px var(--cream),0 0 0 5px var(--theme-accent); }
+.selected-ribbon,.card.is-target:after,.card-reason,.board-state.ready { background:var(--ink); color:var(--cream); }
+.board-state { background:var(--surface); color:var(--muted); }
+.deck-toolbar { background:var(--surface); border-top:2px solid var(--ink); box-shadow:0 -5px 0 var(--line); }
+.deck-progress { background:var(--theme-panel); }
+.deck-progress>span { background:var(--theme-accent); }
+.selection-help span { color:var(--ink); font-weight:700; }
+.round-chip,.tutorial { color:var(--ink); background:var(--surface); border-color:var(--ink); }
+.hero-player { background:var(--surface); border:1px solid var(--ink); border-radius:8px; margin-top:3px; margin-bottom:5px; }
+.hero-emblem { color:var(--cream); background:var(--ink); border-color:var(--ink); box-shadow:2px 2px 0 var(--theme-panel); }
+.hero-health b,.hero-resources b { color:var(--ink); }
+.mana-label strong,.mana-label small,.deck-toolbar-inner>strong { color:var(--ink); }
+.health-track { background:color-mix(in srgb,var(--ink) 15%,transparent); }
+.health-track i { background:#A94647; }
+.mana-gems i { border-color:var(--ink); background:var(--cream); }
+.mana-gems .filled { background:var(--theme-accent); border-color:var(--theme-accent); box-shadow:none; }
+.hero-player.is-target .hero-emblem { box-shadow:0 0 0 2px var(--cream),0 0 0 4px var(--theme-accent); }
+.hero-player.is-target:after { color:var(--ink); background:var(--cream); border-radius:3px; }
+.empty-slot { background:color-mix(in srgb,var(--cream) 22%,transparent); border:1px dashed color-mix(in srgb,var(--ink) 42%,transparent); box-shadow:none; color:var(--ink); }
+.battle-divider b { color:var(--ink); }
+.battle-divider>span { background:var(--line); }
+.turn-controls { border-top:2px solid var(--ink); }
+.battle-log { color:var(--ink); border-color:var(--line); }
+.battle-log summary span { color:var(--muted); }
+dialog { border:2px solid var(--ink); border-radius:12px; background:var(--cream); box-shadow:8px 8px 0 color-mix(in srgb,var(--ink) 35%,transparent),0 24px 100px #0005; }
+dialog::backdrop { background:color-mix(in srgb,var(--ink) 72%,transparent); }
+dialog .eyebrow,dialog .button-outline,.detail-stats b { color:var(--ink); }
+dialog .button-outline { border-color:var(--ink); }
+.detail-portrait { background:var(--theme-panel); border:2px solid var(--ink); box-shadow:4px 4px 0 var(--ink); }
+.detail-copy blockquote,.detail-stats span,.detail-note,.rules-intro,.rules-list p,.result-dialog>p:not(.eyebrow) { color:var(--muted); }
+.detail-skill,.rules-list li::marker { color:var(--ink); }
+.result-emblem { color:var(--ink); background:var(--theme-panel); border:2px solid var(--ink); box-shadow:5px 5px 0 var(--ink); }
+@media (min-width:601px) and (max-height:850px) {
+  .hero-player { margin-top:1px; margin-bottom:3px; }
+  .card-board .card-body { border-left-color:var(--line); }
+  .card-board .card-info { background:var(--cream); }
+}
+@media (max-width:600px) {
+  .hero-player { margin-top:1px; margin-bottom:3px; }
+  .home-page { overflow-x:clip; }
+}
+@media (prefers-reduced-motion:reduce) { body { transition:none; } }

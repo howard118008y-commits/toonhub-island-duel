@@ -1,5 +1,6 @@
 import { CARDS as CARDS24, DEFAULT_DECK as DEFAULT_DECK12, getCard } from './cards.js';
 import { createGame, playCard, attack, endTurn } from './engine.js';
+import { installThemeBridge } from './theme.js';
 
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#game-dialog');
@@ -36,7 +37,13 @@ const icon = (name, label = '') => {
 };
 const busy = () => !game || thinking || game.turn !== 'player' || Boolean(game.winner);
 const keywords = card => (card.keywords || []).map(word => `<span class="keyword ${escape(word)}">${icon(word === 'guard' ? 'shield' : 'star')}${word === 'guard' ? '守護' : '快攻'}</span>`).join('');
-const art = card => `background-position:${(card.artX / (1448 - 143) * 100).toFixed(4)}% ${(card.artY / (1086 - 170) * 100).toFixed(4)}%`;
+const art = card => {
+  if (card.id === 101) return `background-position:${(card.artX / (1448 - 143) * 100).toFixed(4)}% ${(card.artY / (1086 - 170) * 100).toFixed(4)}%`;
+  const sheet = String(Math.floor((card.id - 1) / 6) + 1).padStart(2, '0');
+  const cell = (card.id - 1) % 6;
+  const source = new URL(`../../characters/regions-${sheet}.png`, import.meta.url).href;
+  return `--character-art:url('${source}');--art-x:${cell % 3 * 50}%;--art-y:${Math.floor(cell / 3) * 100}%`;
+};
 
 function cardView(card, options = {}) {
   const { mode = 'collection', uid = '', unit = null, selected = false, disabled = false, reason = '', target = false, action = 'inspect', detail = true, enemy = false } = options;
@@ -48,7 +55,7 @@ function cardView(card, options = {}) {
   return `<div class="${classes}" data-card-uid="${escape(uid)}">
     <button class="card-main" type="button" data-action="${action}" data-id="${card.id}" data-uid="${escape(uid)}" ${disabled ? 'disabled' : ''} ${mode === 'collection' ? `aria-pressed="${selected}"` : ''} aria-label="${escape(`${card.region}，${actionLabel}，${card.job}，${card.cost}費，${combat.attack}攻擊，${health}生命。${card.description}${reason ? `。${reason}` : ''}`)}" title="${escape(reason || card.quote)}">
       <span class="card-top"><span class="cost" aria-label="${card.cost}費">${card.cost}</span><span class="card-region">${escape(card.region)}</span><span class="card-index">${String(card.id).padStart(2, '0')}</span></span>
-      <span class="card-art" style="${art(card)}" role="img" aria-label="${escape(`${card.region} ${card.job}角色插圖`)}"></span>
+      <span class="card-art${card.id <= 24 ? ' card-art-regional' : ''}" style="${art(card)}" role="img" aria-label="${escape(`${card.region} ${card.job}角色插圖`)}"></span>
       <span class="card-body"><strong class="card-job">${escape(card.job)}</strong><span class="keywords">${keywords(card)}</span><span class="card-skill">${escape(card.description)}</span></span>
       <span class="card-stats"><span class="stat attack-stat">${icon('sword')}<b>${combat.attack}</b></span><span class="card-set">島嶼守護者</span><span class="stat health-stat ${unit && unit.hp < unit.maxHp ? 'is-hurt' : ''}">${icon('heart')}<b>${health}</b></span></span>
       ${mode === 'collection' && selected ? `<span class="selected-ribbon">${icon('check')}已加入</span>` : ''}
@@ -60,16 +67,16 @@ function cardView(card, options = {}) {
 }
 
 function header(inBattle = false) {
-  return `<header class="site-header"><button class="brand" data-action="home" aria-label="島嶼對決主選單"><span class="brand-seal">島</span><span>島嶼對決<small>TAIWAN · CARD BATTLE</small></span></button><nav aria-label="主要選單">${screen !== 'home' ? `<button class="quiet-button" data-action="home">${icon('back')}<span>主選單</span></button>` : '<span class="header-note">把日常，打成一場冒險。</span>'}<button class="quiet-button" data-action="rules">${icon('info')}<span>玩法說明</span></button>${inBattle ? '<span class="round-chip">回合 ' + game.round + '</span>' : ''}</nav></header>`;
+  return `<header class="site-header"><button class="brand" data-action="home" aria-label="島嶼對決主選單"><span class="brand-seal">島</span><span>島嶼對決<small>台灣地域卡牌</small></span></button><nav aria-label="主要選單">${screen !== 'home' ? `<button class="quiet-button" data-action="home">${icon('back')}<span>主選單</span></button>` : '<span class="header-note">把日常，打成一場冒險。</span>'}<button class="quiet-button" data-action="rules">${icon('info')}<span>玩法說明</span></button>${inBattle ? '<span class="round-chip">回合 ' + game.round + '</span>' : ''}</nav></header>`;
 }
 
 function homeView() {
   const showcase = [1, 4, 10, 16, 20].map((id, index) => `<div class="fan-position fan-${index}">${cardView(getCard(id), { mode: 'showcase', detail: false })}</div>`).join('');
-  return `${header()}<main class="home-page"><section class="hero-copy"><p class="eyebrow"><span></span> 生活圈的傳說，由你出牌</p><h1>島嶼<span>對決<span class="title-spark">✦</span></span></h1><p class="hero-tagline">24 個地區，打出你的主場。</p><p class="hero-description">早餐聖騎士，對上糖霜煉金師。<br>集結熟悉的日常英雄，把一座島握在手中。</p><div class="hero-actions"><button id="start-battle" class="button button-primary start-button" data-action="start" ${deck.length !== 12 ? 'disabled' : ''}>${icon('cards')}開始對戰${icon('arrow')}</button><button class="button button-outline" data-action="deck">編輯牌組<span class="deck-count">${deck.length}/12</span></button></div><p class="ready-note"><span class="tiny-dot"></span>${deck.length === 12 ? '牌組已備妥 · 點擊即玩，挑戰電腦對手' : '請先選滿12張不重複角色'}</p></section><section class="hero-showcase" aria-label="島嶼角色卡牌"><div class="compass-ring"></div><div class="showcase-top">每一張牌，都有一個地方的個性。</div><div class="card-fan">${showcase}</div><div class="showcase-bottom"><span>24 位原創角色</span><i>✦</i><span>你的 12 張主場陣容</span></div></section><section class="home-rules" aria-label="玩法一覽"><div><span class="rule-number">01</span><p><strong>集結你的主場</strong><span>24 選 12，組出獨一無二的陣容。</span></p></div><div><span class="rule-number">02</span><p><strong>每點費用，都有意思</strong><span>出牌、進場技能，決定出手時機。</span></p></div><div><span class="rule-number">03</span><p><strong>四個席位，一場對決</strong><span>攻擊對方英雄，將生命降至 0。</span></p></div></section></main><footer class="home-footer"><span>FROM EVERYDAY LIFE, TO YOUR NEXT MOVE.</span><span>台灣地域原創卡牌 · 單人策略對戰</span></footer>`;
+  return `${header()}<main class="home-page"><section class="hero-copy"><p class="eyebrow"><span></span> 生活圈的傳說，由你出牌</p><h1>島嶼<span>對決<span class="title-spark">✦</span></span></h1><p class="hero-tagline">24 個地區，打出你的主場。</p><p class="hero-description">早餐聖騎士，對上糖霜煉金師。<br>集結熟悉的日常英雄，把一座島握在手中。</p><div class="hero-actions"><button id="start-battle" class="button button-primary start-button" data-action="start" ${deck.length !== 12 ? 'disabled' : ''}>${icon('cards')}開始對戰${icon('arrow')}</button><button class="button button-outline" data-action="deck">編輯牌組<span class="deck-count">${deck.length}/12</span></button></div><p class="ready-note"><span class="tiny-dot"></span>${deck.length === 12 ? '牌組已備妥 · 點擊即玩，挑戰電腦對手' : '請先選滿12張不重複角色'}</p></section><section class="hero-showcase" aria-label="島嶼角色卡牌"><div class="compass-ring"></div><div class="showcase-top">每一張牌，都有一個地方的個性。</div><div class="card-fan">${showcase}</div><div class="showcase-bottom"><span>24 位原創角色</span><i>✦</i><span>你的 12 張主場陣容</span></div></section><section class="home-rules" aria-label="玩法一覽"><div><span class="rule-number">01</span><p><strong>集結你的主場</strong><span>24 選 12，組出獨一無二的陣容。</span></p></div><div><span class="rule-number">02</span><p><strong>每點費用，都有意思</strong><span>出牌、進場技能，決定出手時機。</span></p></div><div><span class="rule-number">03</span><p><strong>四個席位，一場對決</strong><span>攻擊對方英雄，將生命降至 0。</span></p></div></section></main><footer class="home-footer"><span>把熟悉的日常，變成下一手好牌。</span><span>台灣地域原創卡牌 · 單人策略對戰</span></footer>`;
 }
 
 function deckView() {
-  return `${header()}<main class="deck-page"><div class="page-heading"><div><p class="eyebrow">YOUR HOME TEAM</p><h1>組出你的主場</h1><p>從 24 位地域角色中，選出 12 位並肩作戰。</p></div><span class="selection-count">已選 <strong>${deck.length}</strong> / 12</span></div><p class="selection-help">點卡片加入或移除，ⓘ 查看技能與角色台詞。<span>${escape(message)}</span></p><div class="collection">${CARDS24.map(card => cardView(card, { selected: deck.includes(card.id), action: 'toggle-card' })).join('')}</div><div class="deck-toolbar"><span class="deck-progress" aria-label="已選${deck.length}張，共需12張"><span style="width:${deck.length / 12 * 100}%"></span></span><div class="deck-toolbar-inner"><strong>已選 ${deck.length}<span> / 12</span></strong><div class="deck-secondary"><button class="quiet-button" data-action="clear-deck">清空</button><button class="quiet-button" data-action="default-deck">預設牌組</button></div><button class="button button-primary" data-action="finish-deck" ${deck.length !== 12 ? 'disabled title="需選滿12張角色"' : ''}>完成${icon('check')}</button></div></div></main>`;
+  return `${header()}<main class="deck-page"><div class="page-heading"><div><p class="eyebrow">你的主場陣容</p><h1>組出你的主場</h1><p>從 24 位地域角色中，選出 12 位並肩作戰。</p></div><span class="selection-count">已選 <strong>${deck.length}</strong> / 12</span></div><p class="selection-help">點卡片加入或移除，ⓘ 查看技能與角色台詞。<span>${escape(message)}</span></p><div class="collection">${CARDS24.map(card => cardView(card, { selected: deck.includes(card.id), action: 'toggle-card' })).join('')}</div><div class="deck-toolbar"><span class="deck-progress" aria-label="已選${deck.length}張，共需12張"><span style="width:${deck.length / 12 * 100}%"></span></span><div class="deck-toolbar-inner"><strong>已選 ${deck.length}<span> / 12</span></strong><div class="deck-secondary"><button class="quiet-button" data-action="clear-deck">清空</button><button class="quiet-button" data-action="default-deck">預設牌組</button></div><button class="button button-primary" data-action="finish-deck" ${deck.length !== 12 ? 'disabled title="需選滿12張角色"' : ''}>完成${icon('check')}</button></div></div></main>`;
 }
 
 function heroView(sideName) {
@@ -78,7 +85,7 @@ function heroView(sideName) {
   const enemy = sideName === 'enemy';
   const guarded = game.players.enemy.board.some(unit => getCard(unit.cardId).keywords.includes('guard'));
   const target = enemy && attacker && !guarded && !busy();
-  return `<div class="hero-player ${enemy ? 'enemy' : 'player'} ${target ? 'is-target' : ''}" data-hero="${sideName}"><button class="hero-emblem" ${target ? 'data-action="attack-hero"' : 'disabled'} aria-label="${enemy ? '對手' : '我方'}英雄，${visibleHp}生命${target ? '，點擊攻擊' : ''}">${icon(enemy ? 'shield' : 'star')}</button><div class="hero-name"><strong>${enemy ? '島嶼挑戰者' : '你的主場'}<span>${enemy ? '電腦對手' : 'PLAYER'}</span></strong><div class="hero-health"><span>${icon('heart')}<b>${visibleHp}</b><small> / ${side.maxHp}</small></span><span class="health-track"><i style="width:${visibleHp / side.maxHp * 100}%"></i></span></div></div><div class="hero-resources">${enemy ? `<span>${icon('cards')}手牌 <b>${side.hand.length}</b></span><span>牌庫 <b>${side.deck.length}</b></span>` : `<span class="mana-label">可用費用 <strong>${side.mana}<small> / ${side.maxMana}</small></strong></span><span class="mana-gems" aria-label="${side.mana}點可用費用">${Array.from({ length: side.maxMana }, (_, index) => `<i class="${index < side.mana ? 'filled' : ''}"></i>`).join('')}</span>`}</div></div>`;
+  return `<div class="hero-player ${enemy ? 'enemy' : 'player'} ${target ? 'is-target' : ''}" data-hero="${sideName}"><button class="hero-emblem" ${target ? 'data-action="attack-hero"' : 'disabled'} aria-label="${enemy ? '對手' : '我方'}英雄，${visibleHp}生命${target ? '，點擊攻擊' : ''}">${icon(enemy ? 'shield' : 'star')}</button><div class="hero-name"><strong>${enemy ? '島嶼挑戰者' : '你的主場'}<span>${enemy ? '電腦對手' : '我方玩家'}</span></strong><div class="hero-health"><span>${icon('heart')}<b>${visibleHp}</b><small> / ${side.maxHp}</small></span><span class="health-track"><i style="width:${visibleHp / side.maxHp * 100}%"></i></span></div></div><div class="hero-resources">${enemy ? `<span>${icon('cards')}手牌 <b>${side.hand.length}</b></span><span>牌庫 <b>${side.deck.length}</b></span>` : `<span class="mana-label">可用費用 <strong>${side.mana}<small> / ${side.maxMana}</small></strong></span><span class="mana-gems" aria-label="${side.mana}點可用費用">${Array.from({ length: side.maxMana }, (_, index) => `<i class="${index < side.mana ? 'filled' : ''}"></i>`).join('')}</span>`}</div></div>`;
 }
 
 function boardView(sideName) {
@@ -163,18 +170,18 @@ function closeModal() {
 function showDetails(id) {
   const card = getCard(Number(id));
   if (!card) return;
-  showModal(`<div class="card-detail"><div class="detail-portrait"><span class="card-art" style="${art(card)}" role="img" aria-label="${escape(card.job)}"></span><span class="detail-region">${escape(card.region)}</span></div><div class="detail-copy"><p class="eyebrow">${escape(card.zone || '島嶼守護者')}</p><h2 id="dialog-title">${escape(card.job)}</h2><blockquote>「${escape(card.quote)}」</blockquote><div class="detail-stats"><span><b>${card.cost}</b>費用</span><span><b>${card.attack}</b>攻擊</span><span><b>${card.health}</b>生命</span></div><div class="keywords">${keywords(card)}</div><p class="detail-skill">${escape(card.description)}</p>${card.keywords.includes('guard') ? '<p class="detail-note">守護：敵人必須優先攻擊有守護的角色。</p>' : ''}${card.keywords.includes('rush') ? '<p class="detail-note">快攻：進場當回合即可攻擊。</p>' : '<p class="detail-note">進場後等待一回合，每回合可攻擊一次。</p>'}</div></div>`);
+  showModal(`<div class="card-detail"><div class="detail-portrait"><span class="card-art${card.id <= 24 ? ' card-art-regional' : ''}" style="${art(card)}" role="img" aria-label="${escape(card.job)}"></span><span class="detail-region">${escape(card.region)}</span></div><div class="detail-copy"><p class="eyebrow">${escape(card.zone || '島嶼守護者')}</p><h2 id="dialog-title">${escape(card.job)}</h2><blockquote>「${escape(card.quote)}」</blockquote><div class="detail-stats"><span><b>${card.cost}</b>費用</span><span><b>${card.attack}</b>攻擊</span><span><b>${card.health}</b>生命</span></div><div class="keywords">${keywords(card)}</div><p class="detail-skill">${escape(card.description)}</p>${card.keywords.includes('guard') ? '<p class="detail-note">守護：敵人必須優先攻擊有守護的角色。</p>' : ''}${card.keywords.includes('rush') ? '<p class="detail-note">快攻：進場當回合即可攻擊。</p>' : '<p class="detail-note">進場後等待一回合，每回合可攻擊一次。</p>'}</div></div>`);
 }
 
 function showRules() {
-  showModal(`<div class="rules-dialog"><p class="eyebrow">HOW TO PLAY</p><h2 id="dialog-title">三分鐘，認識你的主場。</h2><p class="rules-intro">讓對方英雄生命歸零，你就贏了。</p><ol class="rules-list"><li><strong>12 張牌，24 點生命</strong><p>雙方各有12張不重複角色、24生命。起手5張牌與3點費用，手牌最多8張，戰場最多4位角色。</p></li><li><strong>出牌，發揮角色技能</strong><p>點擊手牌，支付卡片左上角的費用即可出牌。進場技能立即自動結算；卡片底部顯示攻擊力與生命。</p></li><li><strong>選角色，再選攻擊目標</strong><p>新進場角色需等到下回合才能攻擊；有「快攻」即可立即攻擊。點己方可攻擊角色，再點對手角色或英雄。每位角色每回合只攻擊一次。</p></li><li><strong>守住四席，安排攻擊</strong><p>角色互相攻擊時，同時造成各自攻擊力的傷害。對手有「守護」角色時，必須先攻擊守護。</p></li><li><strong>換回合，新的機會</strong><p>點「結束回合」讓對手行動。每個己方新回合，費用上限增加1（最高8）並補滿，同時抽1張牌。牌庫抽空後，繼續抽牌會受到逐次累加的疲勞傷害。</p></li></ol><button class="button button-primary" data-action="close-dialog">準備好了${icon('check')}</button></div>`);
+  showModal(`<div class="rules-dialog"><p class="eyebrow">玩法說明</p><h2 id="dialog-title">三分鐘，認識你的主場。</h2><p class="rules-intro">讓對方英雄生命歸零，你就贏了。</p><ol class="rules-list"><li><strong>12 張牌，24 點生命</strong><p>雙方各有12張不重複角色、24生命。起手5張牌與3點費用，手牌最多8張，戰場最多4位角色。</p></li><li><strong>出牌，發揮角色技能</strong><p>點擊手牌，支付卡片左上角的費用即可出牌。進場技能立即自動結算；卡片底部顯示攻擊力與生命。</p></li><li><strong>選角色，再選攻擊目標</strong><p>新進場角色需等到下回合才能攻擊；有「快攻」即可立即攻擊。點己方可攻擊角色，再點對手角色或英雄。每位角色每回合只攻擊一次。</p></li><li><strong>守住四席，安排攻擊</strong><p>角色互相攻擊時，同時造成各自攻擊力的傷害。對手有「守護」角色時，必須先攻擊守護。</p></li><li><strong>換回合，新的機會</strong><p>點「結束回合」讓對手行動。每個己方新回合，費用上限增加1（最高8）並補滿，同時抽1張牌。牌庫抽空後，繼續抽牌會受到逐次累加的疲勞傷害。</p></li></ol><button class="button button-primary" data-action="close-dialog">準備好了${icon('check')}</button></div>`);
 }
 
 function showResult() {
   if (!game?.winner) return;
   const won = game.winner === 'player';
   const draw = game.winner === 'draw';
-  showModal(`<div class="result-dialog"><div class="result-emblem">${icon(won ? 'star' : 'shield')}</div><p class="eyebrow">${won ? 'VICTORY · 主場勝利' : draw ? 'DRAW · 勢均力敵' : 'ANOTHER ROUND · 下次見真章'}</p><h2 id="dialog-title">${won ? '這座島，站在你這邊。' : draw ? '精彩對決，不分上下。' : '換個陣容，再來一場。'}</h2><p>第 ${game.round} 回合結束 · 你的生命 ${Math.max(0, game.players.player.hp)} / 24</p><div class="result-actions"><button class="button button-primary" data-action="restart">再戰一場${icon('arrow')}</button><button class="button button-outline" data-action="deck">回到牌組</button></div></div>`);
+  showModal(`<div class="result-dialog"><div class="result-emblem">${icon(won ? 'star' : 'shield')}</div><p class="eyebrow">${won ? '主場勝利' : draw ? '勢均力敵' : '下次見真章'}</p><h2 id="dialog-title">${won ? '這座島，站在你這邊。' : draw ? '精彩對決，不分上下。' : '換個陣容，再來一場。'}</h2><p>第 ${game.round} 回合結束 · 你的生命 ${Math.max(0, game.players.player.hp)} / 24</p><div class="result-actions"><button class="button button-primary" data-action="restart">再戰一場${icon('arrow')}</button><button class="button button-outline" data-action="deck">回到牌組</button></div></div>`);
 }
 
 function uidFrom(target, list) {
@@ -264,3 +271,4 @@ dialog.addEventListener('click', event => { if (event.target === dialog) { const
 dialog.addEventListener('close', () => { if (focusBeforeDialog?.isConnected) focusBeforeDialog.focus(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && !dialog.open && attacker) { attacker = null; announce('已取消選取。'); render(); } });
 render();
+installThemeBridge();
