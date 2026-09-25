@@ -1,6 +1,6 @@
 import { CARDS as CARDS24, DEFAULT_DECK as DEFAULT_DECK12, getCard } from './cards.js';
-import { createGame, playCard, advanceTurn } from './engine.js';
-import { createBattleEffects } from './effects.js';
+import { createGame, playCard, advanceTurn } from './engine.js?v=20260925-battle-3';
+import { createBattleEffects } from './effects.js?v=20260925-battle-3';
 import { installThemeBridge } from './theme.js';
 
 const BRAND_NAME = 'Card & TW ＆ Game';

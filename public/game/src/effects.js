@@ -1,5 +1,5 @@
 import { getCard } from './cards.js';
-import { characterVoice } from './voices.js';
+import { characterVoice } from './voices.js?v=20260925-battle-3';
 
 const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
 const EASE_MOVE = 'cubic-bezier(0.77, 0, 0.175, 1)';

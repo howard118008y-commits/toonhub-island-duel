@@ -173,7 +173,7 @@ export default function App() {
       <dialog ref={gameDialog} className="game-dialog" aria-labelledby="game-title">
         <div className="game-shell">
           <header className="game-topbar"><div><h2 id="game-title">{BRAND_NAME}</h2><span>你的對局會保留，隨時回來繼續。</span></div><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回首頁</button></header>
-          {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}game/index.html`} title={`${BRAND_NAME} — 臺灣地域卡牌對戰`} onLoad={() => sendTheme(activeCharacter)} />}
+          {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}game/index.html?v=20260925-battle-3`} title={`${BRAND_NAME} — 臺灣地域卡牌對戰`} onLoad={() => sendTheme(activeCharacter)} />}
         </div>
       </dialog>
     </div>
