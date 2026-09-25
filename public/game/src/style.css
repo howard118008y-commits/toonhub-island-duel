@@ -188,3 +188,189 @@ dialog .button-outline { border-color:var(--ink); }
 /* Preserve the complete brand without crowding the game controls. */
 .brand-name{white-space:nowrap}.hero-copy h1.game-brand-title{font-size:clamp(26px,3.4vw,43px);line-height:1.2;letter-spacing:-.03em;white-space:nowrap}
 @media(max-width:600px){.brand{font-size:11px;letter-spacing:0;gap:6px}}
+
+/* A single visible action drives the whole turn. */
+.is-embedded .site-header .brand{display:none}
+.is-embedded .site-header{justify-content:flex-end;padding:4px 16px;min-height:36px}
+.is-embedded .site-header nav{width:100%;justify-content:space-between;gap:10px}
+.battle-header{padding:7px 24px;min-height:44px}
+.battle-header .brand-seal{width:30px;height:30px;font-size:22px}
+.battle-header .brand{font-size:14px}
+.battle-header .brand small{display:none}
+.battle-header .quiet-button,.is-embedded .site-header .quiet-button{min-height:30px;padding:3px 7px}
+.battle-page{max-width:920px;padding:8px 24px 20px}
+.tutorial{justify-content:center;min-height:25px;padding:2px 8px;margin-bottom:5px;font-size:12px}
+.tutorial button{min-height:23px;min-width:26px}
+.battlefield{max-width:690px;scroll-margin-top:8px}
+.hero-player,.hero-player.player{max-width:650px;min-height:57px;padding:5px 8px;gap:10px}
+.hero-emblem{display:grid;place-items:center;width:34px;height:34px}
+.hero-name{min-width:0;max-width:none}
+.hero-name>strong{font-size:11px;margin-bottom:3px;letter-spacing:.5px}
+.hero-health{max-width:none;gap:10px}
+.hero-health b{font-family:inherit;font-size:32px;font-weight:850;color:var(--ink);font-variant-numeric:tabular-nums}
+.hero-health small{font-size:10px}
+.hero-health .icon{width:15px;height:15px}
+.health-track{width:66px}
+.hero-resources,.hero-player.player .hero-resources{flex-direction:column;align-items:flex-end;gap:0}
+.mana-label{font-size:11px;white-space:nowrap}
+.mana-label strong{margin-left:6px}
+.mana-label strong b,.hero-resources [data-energy-value]{font-family:inherit;font-size:28px;font-weight:850;margin:0;color:var(--ink);font-variant-numeric:tabular-nums}
+.mana-label small{font-size:11px}
+.resource-count{font-size:9px}
+.board-row{max-width:650px;gap:10px;align-items:stretch}
+.card-board .card-main{height:100%;display:grid;grid-template-columns:56px minmax(0,1fr);grid-template-rows:23px 66px 22px 14px;padding:3px;border-radius:7px}
+.card-board .card-top{grid-column:1/-1;min-height:0;padding:0 4px}
+.card-board .cost{width:22px;height:22px;font-size:15px}
+.card-board .card-region{font-size:13px;letter-spacing:0}
+.card-board .card-index{display:none}
+.card-board .card-art{grid-column:1;width:55px;max-width:55px;align-self:center}
+.card-board .card-body{grid-column:2;display:flex;min-height:0;min-width:0;justify-content:center;padding:4px;gap:5px;border:0}
+.card-board .card-job{display:block;font-size:10px;line-height:1.5;letter-spacing:0}
+.card-board .card-skill{display:none}
+.card-board .keywords{gap:2px;flex-wrap:wrap}
+.card-board .keyword{font-size:9px;padding:2px 4px}
+.card-board .keyword .icon{width:10px;height:10px}
+.card-board .card-stats{grid-column:1/-1;min-height:0;padding:0 6px}
+.card-board .stat b{font-size:20px}
+.card-board .stat .icon{width:12px;height:12px}
+.card-board .card-set{display:none}
+.card-board .board-state{grid-column:1/-1;font-size:9px;line-height:14px;letter-spacing:0}
+.card-board .card-info{top:28px;right:4px;left:auto;width:22px;height:22px;padding:2px}
+.card-board .card-info .icon{width:15px;height:15px}
+.empty-slot{min-height:137px;border-style:dashed;gap:3px}
+.empty-slot>span{font-size:22px}
+.empty-slot small{font-size:9px;letter-spacing:0}
+.battle-divider{margin:4px auto;gap:12px}
+.battle-divider b{font-size:10px;line-height:12px;letter-spacing:1px}
+.hand-area{max-width:850px;margin:6px auto 0;padding:0}
+.hand-heading{padding:5px 2px 0;font-size:10px}
+.hand-heading strong{font-size:12px}
+.hand-heading strong span{font-size:10px}
+.hand-scroll{padding:6px 3px 10px;overscroll-behavior-x:contain}
+.hand-cards{gap:10px}
+.card-hand{width:112px}
+.card-hand .card-top{min-height:25px}
+.card-hand .cost{width:23px;height:23px;font-size:16px}
+.card-hand .card-region{font-size:13px}
+.card-hand .card-art{width:58px}
+.card-hand .card-body{min-height:29px;padding:3px;gap:2px}
+.card-hand .card-job{display:none}
+.card-hand .keywords{display:none}
+.card-hand .card-skill{font-size:10px;line-height:1.35;min-height:0}
+.card-hand .card-stats{min-height:23px;padding:1px 5px}
+.card-hand .stat b{font-size:18px}
+.card-hand .card-set{display:none}
+.card-hand .card-info{top:31px;right:5px}
+.card-reason{font-size:10px;line-height:22px}
+.turn-controls{position:sticky;bottom:0;z-index:20;max-width:850px;margin:0 auto;padding:9px 12px;min-height:66px;gap:10px;background:var(--surface);border:2px solid var(--ink);border-radius:10px;box-shadow:0 -4px 18px #203c321a}
+.turn-guidance{min-width:0;gap:4px}
+.turn-guidance>strong{font-size:13px;line-height:1.4}
+.action-message{max-width:450px;font-size:11px;line-height:1.4}
+.end-turn{position:relative;flex:none;flex-wrap:wrap;gap:5px 10px;min-width:170px;min-height:46px;padding:9px 12px;font-size:16px}
+.end-turn small{display:block;width:100%;font-size:10px;line-height:1.2;font-weight:500;letter-spacing:0}
+.end-turn:has(small){padding:6px 12px}
+.battle-log summary{padding:9px 5px}
+.battle-bottom .quiet-button{min-height:32px}
+@media(max-width:600px){
+  .battle-page{padding:5px 10px 16px}
+  .battle-header{padding:5px 12px}
+  .tutorial{font-size:11px;margin-bottom:3px}
+  .hero-player,.hero-player.player{min-height:56px;padding:4px;gap:7px}
+  .hero-emblem{width:27px;height:27px}
+  .hero-emblem .icon{width:19px;height:19px}
+  .hero-name>strong{font-size:10px}
+  .hero-health b{font-size:30px}
+  .hero-health small{font-size:9px}
+  .health-track{display:none}
+  .hero-resources [data-energy-value]{font-size:27px}
+  .mana-label{font-size:10px}
+  .resource-count{font-size:8px}
+  .board-row{gap:6px}
+  .card-board .card-main{display:flex;padding:2px}
+  .card-board .card-top{min-height:24px;padding:1px 2px}
+  .card-board .cost{width:21px;height:21px;font-size:15px}
+  .card-board .card-region{font-size:11px}
+  .card-board .card-art{width:46px;max-width:46px}
+  .card-board .card-body{flex:1;min-height:19px;padding:2px 0;gap:0}
+  .card-board .card-job{display:none}
+  .card-board .keywords{justify-content:center}
+  .card-board .keyword{font-size:8px;padding:1px 3px}
+  .card-board .card-stats{min-height:23px;padding:0 3px}
+  .card-board .stat{min-width:0;gap:2px}
+  .card-board .stat b{font-size:18px}
+  .card-board .stat .icon{width:10px;height:10px}
+  .card-board .board-state{font-size:8px;line-height:13px}
+  .card-board .card-info{top:28px;right:2px;width:21px;height:21px}
+  .empty-slot{min-height:142px}
+  .empty-slot small{font-size:8px}
+  .hand-area{margin-top:4px}
+  .hand-cards{justify-content:flex-start;gap:8px}
+  .card-hand{width:101px}
+  .card-hand .card-art{width:52px}
+  .card-hand .card-body{min-height:28px}
+  .card-hand .card-skill{font-size:9px}
+  .turn-controls{padding:7px 8px;gap:6px;min-height:71px;bottom:0}
+  .turn-guidance>strong{font-size:11px;max-width:none}
+  .action-message{font-size:10px;max-width:190px}
+  .end-turn{min-width:145px;max-width:150px;font-size:15px;min-height:48px;padding:8px}
+  .end-turn small{font-size:9px}
+  .end-turn:has(small){padding:6px}
+}
+
+@media(min-width:601px) and (max-height:760px){
+  .battle-page{padding-top:4px}
+  .tutorial{min-height:22px;margin-bottom:2px;font-size:11px}
+  .hero-player,.hero-player.player{min-height:46px;padding:2px 6px}
+  .hero-name>strong{margin-bottom:1px;font-size:10px}
+  .hero-health b{font-size:30px}
+  .hero-resources [data-energy-value]{font-size:26px}
+  .board-row{gap:9px}
+  .card-board .card-main{grid-template-columns:38px minmax(0,1fr);grid-template-rows:21px 43px 20px 12px;padding:2px}
+  .card-board .card-art{width:36px;max-width:36px}
+  .card-board .card-body{padding:2px 5px;gap:2px}
+  .card-board .card-job{font-size:10px;line-height:1.3}
+  .card-board .cost{width:20px;height:20px;font-size:14px}
+  .card-board .board-state{font-size:8px;line-height:12px}
+  .card-board .card-info{top:24px;right:3px;width:20px;height:20px}
+  .empty-slot{min-height:104px}
+  .battle-divider{margin:2px auto}
+  .hand-area{margin-top:3px}
+  .hand-heading{padding-top:3px}
+  .hand-scroll{padding-top:4px;padding-bottom:7px}
+  .card-hand .card-art{width:52px}
+  .turn-controls{min-height:61px;padding:6px 10px}
+}
+
+@media(max-width:600px) and (max-height:700px){
+  .battle-page{padding-top:3px}
+  .battle-page>.tutorial{display:none}
+  .hero-player,.hero-player.player{min-height:47px;padding:1px 3px}
+  .hero-name>strong{margin-bottom:0;font-size:9px}
+  .hero-health b{font-size:29px}
+  .hero-resources [data-energy-value]{font-size:26px}
+  .resource-count{font-size:7px}
+  .board-row{gap:5px}
+  .card-board .card-main{display:grid;grid-template-columns:28px minmax(0,1fr);grid-template-rows:21px 32px 20px;padding:2px}
+  .card-board .card-top{grid-column:1/-1;min-height:0;padding:0 1px}
+  .card-board .cost{width:19px;height:19px;font-size:14px}
+  .card-board .card-region{font-size:11px}
+  .card-board .card-art{grid-column:1;width:27px;max-width:27px}
+  .card-board .card-body{grid-column:2;min-height:0;padding:1px;justify-content:center}
+  .card-board .keyword{font-size:8px;padding:1px 2px}
+  .card-board .keyword .icon{width:8px;height:8px}
+  .card-board .card-stats{grid-column:1/-1;min-height:0;padding:0 3px}
+  .card-board .stat b{font-size:17px}
+  .card-board .board-state,.card-board .card-info{display:none}
+  .empty-slot{min-height:81px}
+  .empty-slot>span{font-size:18px}
+  .battle-divider{margin:2px auto}
+  .battle-divider b{font-size:9px;line-height:10px}
+  .hand-area{margin-top:2px}
+  .hand-heading{padding-top:3px}
+  .hand-scroll{padding-top:4px;padding-bottom:6px}
+  .card-hand .card-top{min-height:23px}
+  .card-hand .card-art{width:42px}
+  .card-hand .card-body{min-height:25px;padding:2px 3px}
+  .card-hand .card-stats{min-height:22px}
+  .turn-controls{min-height:65px;padding:5px 7px}
+}

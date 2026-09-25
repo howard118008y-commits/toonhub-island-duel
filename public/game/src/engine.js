@@ -1,5 +1,24 @@
 import { CARDS, DEFAULT_DECK, getCard } from './cards.js';
 
+const timelines = new WeakMap();
+const entity = (state, side, unit = null) => unit
+  ? { side, kind: 'card', uid: unit.uid, cardId: unit.cardId, slot: state.players[side].board.indexOf(unit) }
+  : { side, kind: 'hero' };
+
+function step(state, type, side, details = {}) {
+  const timeline = timelines.get(state);
+  if (!timeline) return;
+  timeline.push({ seq: timeline.length + 1, type, side, changes: [], ...details, snapshot: structuredClone(state) });
+}
+
+function change(state, side, unit, field, after) {
+  const value = unit || state.players[side];
+  const before = field === 'hp' ? Math.max(0, value[field]) : value[field];
+  value[field] = after;
+  const visibleAfter = field === 'hp' ? Math.max(0, after) : after;
+  return { target: entity(state, side, unit), field, before, after: visibleAfter, amount: visibleAfter - before };
+}
+
 const other = side => side === 'player' ? 'enemy' : 'player';
 const sideName = side => side === 'player' ? '我方' : '對手';
 const cardName = cardId => {
@@ -20,17 +39,20 @@ function finish(state, events) {
   if (!playerDead && !enemyDead) return false;
   state.winner = playerDead && enemyDead ? 'draw' : playerDead ? 'enemy' : 'player';
   report(state, events, state.winner === 'draw' ? '雙方英雄同時倒下，平手。' : state.winner === 'player' ? '我方獲勝！這座島，交給你了。' : '對手獲勝。重整牌組，再來一局。');
+  step(state, 'winner', state.winner === 'draw' ? state.turn : state.winner, state.winner === 'draw' ? {} : { target: entity(state, state.winner) });
   return true;
 }
 
 function cleanup(state, events) {
   for (const side of ['player', 'enemy']) {
     const owner = state.players[side];
-    owner.board = owner.board.filter(unit => {
-      if (unit.hp > 0) return true;
+    for (const unit of [...owner.board]) {
+      if (unit.hp > 0) continue;
+      const target = entity(state, side, unit);
+      owner.board.splice(owner.board.indexOf(unit), 1);
       report(state, events, `${sideName(side)}的${cardName(unit.cardId)}退場。`);
-      return false;
-    });
+      step(state, 'death', side, { target });
+    }
   }
   finish(state, events);
 }
@@ -44,8 +66,9 @@ function draw(state, side, count, events) {
   for (let i = 0; i < count && !state.winner; i++) {
     if (!owner.deck.length) {
       owner.fatigue++;
-      owner.hp -= owner.fatigue;
+      const changes = [change(state, side, null, 'hp', owner.hp - owner.fatigue)];
       report(state, events, `${sideName(side)}牌庫已空，受到 ${owner.fatigue} 點疲勞傷害。`);
+      step(state, 'damage', side, { target: entity(state, side), changes });
       finish(state, events);
       continue;
     }
@@ -56,6 +79,7 @@ function draw(state, side, count, events) {
       owner.hand.push({ uid: nextUid(state), cardId });
       report(state, events, side === 'player' ? `我方抽到${cardName(cardId)}。` : '對手抽了 1 張牌。');
     }
+    step(state, 'draw', side, { target: entity(state, side) });
   }
 }
 
@@ -87,23 +111,20 @@ export function createGame(playerDeckIds = DEFAULT_DECK, { rng = Math.random } =
   const events = [];
   draw(state, 'player', 5, events);
   draw(state, 'enemy', 5, events);
-  report(state, events, '第 1 回合開始。我方先手，雙方起始費用為 3。');
+  report(state, events, '第 1 回合開始。我方先手，雙方起始能量為 3。');
   return state;
-}
-
-function heal(target, amount) {
-  const before = target.hp;
-  target.hp = Math.min(target.maxHp, target.hp + amount);
-  return target.hp - before;
 }
 
 function applyAbility(state, side, unit, events) {
   const owner = state.players[side];
-  const foe = state.players[other(side)];
+  const enemy = other(side);
+  const foe = state.players[enemy];
   const card = getCard(unit.cardId);
+  const actor = entity(state, side, unit);
   const healHero = amount => {
-    const restored = heal(owner, amount);
-    report(state, events, `${sideName(side)}英雄恢復 ${restored} 點生命。`);
+    const delta = change(state, side, null, 'hp', Math.min(owner.maxHp, owner.hp + amount));
+    report(state, events, `${sideName(side)}英雄恢復 ${delta.amount} 點生命。`);
+    step(state, 'heal', side, { actor, target: delta.target, changes: [delta] });
   };
   switch (card.ability) {
     case 'healHero4': healHero(4); break;
@@ -112,47 +133,56 @@ function applyAbility(state, side, unit, events) {
     case 'healHero2Draw1': healHero(2); draw(state, side, 1, events); break;
     case 'draw1': draw(state, side, 1, events); break;
     case 'draw2': draw(state, side, 2, events); break;
-    case 'heroDamage3':
-      foe.hp -= 3;
-      report(state, events, `${cardName(card.id)}對${sideName(other(side))}英雄造成 3 點傷害。`);
+    case 'heroDamage3': {
+      const delta = change(state, enemy, null, 'hp', foe.hp - 3);
+      report(state, events, `${cardName(card.id)}對${sideName(enemy)}英雄造成 ${-delta.amount} 點傷害。`);
+      step(state, 'damage', side, { actor, target: delta.target, changes: [delta] });
       break;
+    }
     case 'buffAllAttack1':
     case 'buffOthersAttack1': {
       const targets = owner.board.filter(ally => card.ability === 'buffAllAttack1' || ally.uid !== unit.uid);
-      targets.forEach(ally => ally.attack++);
+      const changes = targets.map(ally => change(state, side, ally, 'attack', ally.attack + 1));
       report(state, events, `${sideName(side)}的 ${targets.length} 位角色獲得 +1 攻擊。`);
+      step(state, 'buff', side, { actor, changes });
       break;
     }
     case 'buffOthersHealth2': {
       const targets = owner.board.filter(ally => ally.uid !== unit.uid);
-      targets.forEach(ally => { ally.hp += 2; ally.maxHp += 2; });
+      const changes = targets.flatMap(ally => [change(state, side, ally, 'maxHp', ally.maxHp + 2), change(state, side, ally, 'hp', ally.hp + 2)]);
       report(state, events, `${sideName(side)}的其他 ${targets.length} 位角色獲得 +2 生命與生命上限。`);
+      step(state, 'buff', side, { actor, changes });
       break;
     }
-    case 'healAll3':
-      healHero(3);
-      owner.board.forEach(ally => heal(ally, 3));
-      report(state, events, `${sideName(side)}所有角色各恢復最多 3 點生命。`);
+    case 'healAll3': {
+      const changes = [change(state, side, null, 'hp', Math.min(owner.maxHp, owner.hp + 3)), ...owner.board.map(ally => change(state, side, ally, 'hp', Math.min(ally.maxHp, ally.hp + 3)))];
+      report(state, events, `${sideName(side)}英雄與所有角色各恢復最多 3 點生命。`);
+      step(state, 'heal', side, { actor, changes });
       break;
+    }
     case 'damageWeakest2': {
       const target = foe.board.reduce((weakest, candidate) => !weakest || candidate.hp < weakest.hp ? candidate : weakest, null);
       if (target) {
-        target.hp -= 2;
-        report(state, events, `${cardName(card.id)}對${cardName(target.cardId)}造成 2 點傷害。`);
+        const delta = change(state, enemy, target, 'hp', target.hp - 2);
+        report(state, events, `${cardName(card.id)}對${cardName(target.cardId)}造成 ${-delta.amount} 點傷害。`);
+        step(state, 'damage', side, { actor, target: delta.target, changes: [delta] });
       }
       break;
     }
     case 'damageAll1':
     case 'damageAll2': {
       const damage = card.ability === 'damageAll2' ? 2 : 1;
-      foe.board.forEach(target => { target.hp -= damage; });
-      report(state, events, `${cardName(card.id)}對所有敵方角色造成 ${damage} 點傷害。`);
+      const changes = foe.board.map(target => change(state, enemy, target, 'hp', target.hp - damage));
+      report(state, events, `${cardName(card.id)}對所有敵方角色造成最多 ${damage} 點傷害。`);
+      step(state, 'damage', side, { actor, changes });
       break;
     }
     case 'summonPuppet':
       if (owner.board.length < 4) {
-        owner.board.push(makeUnit({ uid: nextUid(state), cardId: 101 }));
+        const puppet = makeUnit({ uid: nextUid(state), cardId: 101 });
+        owner.board.push(puppet);
         report(state, events, `${sideName(side)}召喚一個 2／2 掌中戲偶。`);
+        step(state, 'summon', side, { actor: entity(state, side, puppet), target: entity(state, side, puppet) });
       } else {
         report(state, events, `${sideName(side)}場上已滿，無法召喚掌中戲偶。`);
       }
@@ -173,12 +203,14 @@ function playForSide(state, side, handUid, events) {
   const handCard = owner.hand[handIndex];
   const card = getCard(handCard.cardId);
   if (owner.board.length >= 4) return '場上最多 4 位角色，請先騰出空位。';
-  if (owner.mana < card.cost) return `費用不足：這張牌需要 ${card.cost} 點費用。`;
-  owner.mana -= card.cost;
+  if (owner.mana < card.cost) return `能量不足：這張牌需要 ${card.cost} 點能量。`;
+  const energy = change(state, side, null, 'mana', owner.mana - card.cost);
+  step(state, 'energy', side, { target: energy.target, changes: [energy] });
   owner.hand.splice(handIndex, 1);
   const unit = makeUnit(handCard);
   owner.board.push(unit);
-  report(state, events, `${sideName(side)}花費 ${card.cost} 點費用，派出${cardName(card.id)}。`);
+  report(state, events, `${sideName(side)}花費 ${card.cost} 點能量，派出${cardName(card.id)}。`);
+  step(state, 'summon', side, { actor: entity(state, side, unit), target: entity(state, side, unit) });
   applyAbility(state, side, unit, events);
   return '';
 }
@@ -192,15 +224,19 @@ function attackForSide(state, side, attackerUid, targetUidOrHero, events) {
   if (targetUidOrHero !== 'hero' && !target) return '請選擇敵方角色或敵方英雄。';
   const guards = foe.board.filter(unit => getCard(unit.cardId).keywords.includes('guard'));
   if (guards.length && (!target || !guards.some(guard => guard.uid === target.uid))) return '敵方有守護角色，必須先攻擊守護。';
+  const actor = entity(state, side, attacker);
+  const targetEntity = entity(state, other(side), target);
+  if (target && getCard(target.cardId).keywords.includes('guard')) step(state, 'guard', side, { actor, target: targetEntity });
   attacker.ready = false;
+  step(state, 'attack', side, { actor, target: targetEntity });
+  const changes = [change(state, other(side), target, 'hp', (target || foe).hp - attacker.attack)];
   if (target) {
-    target.hp -= attacker.attack;
-    attacker.hp -= target.attack;
-    report(state, events, `${cardName(attacker.cardId)}攻擊${cardName(target.cardId)}，雙方互受 ${attacker.attack}／${target.attack} 點傷害。`);
+    changes.push(change(state, side, attacker, 'hp', attacker.hp - target.attack));
+    report(state, events, `${cardName(attacker.cardId)}攻擊${cardName(target.cardId)}，雙方互受 ${-changes[0].amount}／${-changes[1].amount} 點傷害。`);
   } else {
-    foe.hp -= attacker.attack;
-    report(state, events, `${cardName(attacker.cardId)}對${sideName(other(side))}英雄造成 ${attacker.attack} 點傷害。`);
+    report(state, events, `${cardName(attacker.cardId)}對${sideName(other(side))}英雄造成 ${-changes[0].amount} 點傷害。`);
   }
+  step(state, 'damage', side, { actor, target: targetEntity, changes });
   cleanup(state, events);
   return '';
 }
@@ -211,20 +247,25 @@ function playerActionError(state) {
   return '';
 }
 
-function result(error, events, fallback) {
-  return { ok: !error, message: error || events.at(-1) || fallback, events };
+function actionResult(state, run, fallback) {
+  const events = [];
+  const timeline = [];
+  timelines.set(state, timeline);
+  try {
+    const error = playerActionError(state) || run(events);
+    if (timeline.length) timeline.at(-1).snapshot = structuredClone(state);
+    return { ok: !error, message: error || events.at(-1) || fallback, events, timeline };
+  } finally {
+    timelines.delete(state);
+  }
 }
 
 export function playCard(state, handUid) {
-  const events = [];
-  const error = playerActionError(state) || playForSide(state, 'player', handUid, events);
-  return result(error, events, '出牌完成。');
+  return actionResult(state, events => playForSide(state, 'player', handUid, events), '出牌完成。');
 }
 
 export function attack(state, attackerUid, targetUidOrHero) {
-  const events = [];
-  const error = playerActionError(state) || attackForSide(state, 'player', attackerUid, targetUidOrHero, events);
-  return result(error, events, '攻擊完成。');
+  return actionResult(state, events => attackForSide(state, 'player', attackerUid, targetUidOrHero, events), '攻擊完成。');
 }
 
 function startTurn(state, side, events) {
@@ -232,9 +273,10 @@ function startTurn(state, side, events) {
   const owner = state.players[side];
   if (owner.turnCount > 0) owner.maxMana = Math.min(8, owner.maxMana + 1);
   owner.turnCount++;
-  owner.mana = owner.maxMana;
+  const energy = change(state, side, null, 'mana', owner.maxMana);
   owner.board.forEach(unit => { unit.ready = true; });
-  report(state, events, `${sideName(side)}回合開始，費用 ${owner.mana}／${owner.maxMana}。`);
+  report(state, events, `${sideName(side)}回合開始，能量 ${owner.mana}／${owner.maxMana}。`);
+  step(state, 'turn', side, { target: entity(state, side), changes: [energy] });
   draw(state, side, 1, events);
 }
 
@@ -265,9 +307,9 @@ function playScore(state, handCard) {
   return score;
 }
 
-function chooseAttack(state) {
-  const attackers = state.players.enemy.board.filter(unit => unit.ready);
-  const foe = state.players.player;
+function chooseAttack(state, side = 'enemy') {
+  const attackers = state.players[side].board.filter(unit => unit.ready);
+  const foe = state.players[other(side)];
   if (!attackers.length) return null;
   const guards = foe.board.filter(unit => getCard(unit.cardId).keywords.includes('guard'));
   if (!guards.length && attackers.reduce((total, unit) => total + unit.attack, 0) >= foe.hp) {
@@ -317,10 +359,7 @@ function enemyTurn(state, events) {
   }
 }
 
-export function endTurn(state) {
-  const events = [];
-  const error = playerActionError(state);
-  if (error) return result(error, events, '');
+function finishRound(state, events) {
   report(state, events, '我方結束回合。');
   startTurn(state, 'enemy', events);
   if (!state.winner) enemyTurn(state, events);
@@ -329,5 +368,21 @@ export function endTurn(state) {
     state.round++;
     startTurn(state, 'player', events);
   }
-  return result('', events, '回合完成。');
+  return '';
+}
+
+export function endTurn(state) {
+  return actionResult(state, events => finishRound(state, events), '回合完成。');
+}
+
+export function advanceTurn(state) {
+  return actionResult(state, events => {
+    for (let count = 0; count < 4 && !state.winner; count++) {
+      const choice = chooseAttack(state, 'player');
+      if (!choice) break;
+      attackForSide(state, 'player', choice.attacker.uid, choice.target, events);
+    }
+    if (!state.winner) finishRound(state, events);
+    return '';
+  }, '全隊進攻完成。');
 }

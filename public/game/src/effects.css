@@ -1,0 +1,20 @@
+.battle-effects{position:fixed;inset:0;z-index:90;pointer-events:none;overflow:clip;isolation:isolate}
+.battle-effects *{pointer-events:none!important}
+.battle-fx-popup,.battle-fx-outline,.battle-fx-ghost{position:absolute;box-sizing:border-box;margin:0}
+.battle-fx-popup{z-index:3;max-width:calc(100vw - 16px);font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif;line-height:1.2;text-align:center}
+.battle-fx-damage,.battle-fx-heal,.battle-fx-energy,.battle-fx-buff{font-size:34px;font-weight:900;letter-spacing:-.04em;white-space:nowrap;color:#b51d2f;-webkit-text-stroke:1.8px #fff9ed;paint-order:stroke fill;text-shadow:0 2px 3px #142c325e}
+.battle-fx-heal,.battle-fx-buff{color:#146348}
+.battle-fx-energy{font-size:25px;color:#71400d;letter-spacing:-.025em}
+.battle-fx-buff{font-size:23px;letter-spacing:-.025em}
+.battle-fx-speech{z-index:4;width:max-content;max-width:min(216px,calc(100vw - 16px));padding:8px 11px;border:1px solid #203c324a;border-radius:12px 12px 12px 3px;background:#fffaf2f5;box-shadow:0 4px 15px #17352a24;color:#203c32;font-size:12px;font-weight:700;line-height:1.55;text-align:left;overflow-wrap:anywhere}
+.battle-fx-guard.battle-fx-popup{z-index:2;min-width:64px;white-space:pre-line;font-size:15px;font-weight:800;line-height:1.2;color:#275f67;-webkit-text-stroke:1px #fff9ed;paint-order:stroke fill;text-shadow:0 2px 5px #15352e33}
+.battle-fx-guard.battle-fx-popup::first-line{font-size:34px}
+.battle-fx-outline{z-index:1;border:3px solid currentColor;border-radius:9px;box-shadow:0 0 0 3px #fff9ed80,inset 0 0 16px #fff9ed40;color:#b51d2f}
+.battle-fx-outline.battle-fx-attack,.battle-fx-outline.battle-fx-summon{color:#bf8e37}
+.battle-fx-outline.battle-fx-guard{color:#397580}
+.battle-fx-outline.battle-fx-heal{color:#2d865f}
+.battle-fx-outline.battle-fx-death{color:#795258}
+.battle-fx-ghost{z-index:2;transition:none!important;transform-origin:center;filter:drop-shadow(0 5px 8px #15352e4d)}
+.battle-fx-ghost .card-info{visibility:hidden}
+@media(max-width:600px){.battle-fx-damage,.battle-fx-heal{font-size:31px}.battle-fx-energy{font-size:23px}.battle-fx-buff{font-size:20px}.battle-fx-speech{max-width:min(180px,calc(100vw - 16px));font-size:12px;padding:7px 9px}}
+@media(prefers-reduced-motion:reduce){.battle-fx-popup,.battle-fx-outline,.battle-fx-ghost{transform:none!important}.battle-fx-outline{box-shadow:0 0 0 2px #fff9ed80}}

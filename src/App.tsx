@@ -133,7 +133,7 @@ export default function App() {
         <h1 className={`ghost-text absolute inset-x-0 flex items-center justify-center pointer-events-none select-none ${activeCharacter.region.length > 2 ? 'long-region' : ''}`}>{activeCharacter.region}</h1>
 
         <header className="site-header">
-          <div className="brand-label"><span className="brand-mark" aria-hidden="true">嶼</span><span className="brand-name">{BRAND_NAME}<small>24位臺灣地域角色，選12張組牌。<br />4個戰場席位，挑戰電腦對手。</small></span></div>
+          <div className="brand-label"><span className="brand-mark" aria-hidden="true">嶼</span><span className="brand-name">{BRAND_NAME}<small>24位臺灣地域角色，選12張組牌。<br />點卡出場，全隊進攻。</small></span></div>
           <button className="play-trigger" type="button" onClick={openGame}>開始卡牌對戰 <ArrowUpRight size={16} strokeWidth={1.8} aria-hidden="true" /></button>
         </header>
 
