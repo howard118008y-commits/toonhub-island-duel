@@ -99,13 +99,17 @@ export function createBattleEffects({ root }) {
         left + width + 6 <= other.placed.left || left >= other.placed.right + 6 ||
         top + height + 6 <= other.placed.top || top >= other.placed.bottom + 6);
       const candidates = item.kind === 'speech'
-        ? [rect.top - height - 9, rect.top + rect.height + 9]
-        : [y, y - height - 7, y + height + 7];
-      for (let row = 0; row < 8; row++) candidates.push(8 + row * (height + 7));
-      const positions = candidates.flatMap(top => [x, 8, viewportWidth - width - 8].map(left => [clampX(left), clampY(top)]));
+        ? [rect.top - height - 9, rect.top + rect.height + 9, rect.top - height * 2 - 16, rect.top + rect.height + height + 16]
+        : [y, y - height - 7, y + height + 7, y - (height + 7) * 2, y + (height + 7) * 2];
+      const positions = candidates.map(top => [x, clampY(top)]);
       const free = positions.find(([left, top]) => clear(left, top));
       if (free) [x, y] = free;
-      else if (occupied.length) { remove(occupied[0]); return position(item, frame); }
+      else {
+        const blocker = occupied.find(other => positions.some(([left, top]) =>
+          left < other.placed.right + 6 && left + width + 6 > other.placed.left &&
+          top < other.placed.bottom + 6 && top + height + 6 > other.placed.top));
+        if (blocker) { remove(blocker); return position(item, frame); }
+      }
     } else if (item.kind === 'guard') y = clampY(rect.top + rect.height / 2 - height / 2 + 18);
     item.node.style.left = `${x}px`;
     item.node.style.top = `${y}px`;
@@ -114,6 +118,9 @@ export function createBattleEffects({ root }) {
 
   function popup(text, kind, entity, frame, { energy = false, life = 1100 } = {}) {
     if (!anchor(entity, frame, energy)) return;
+    if (kind === 'energy') {
+      [...items].filter(item => item.kind === kind && keyOf(item.entity) === keyOf(entity)).forEach(remove);
+    }
     const node = doc.createElement('div');
     node.className = `battle-fx-popup battle-fx-${kind}`;
     node.dataset.effect = kind;
