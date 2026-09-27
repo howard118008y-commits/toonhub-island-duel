@@ -55,3 +55,22 @@ Google Sitemap 擷取狀態與公開 HTTP 結果不同，最終檢查兩筆仍�
 Google favicon 與 site name 以 hostname 區分，因此品牌根首頁的設定可能影響同 hostname 其他專案的搜尋呈現。新增其他獨立品牌時，應規劃各自的 hostname。
 
 來源與細節：[官方研究](seo-research-2026-09-27.md)、[實作說明](seo-implementation-2026-09-27.md)、[獨立審查](seo-independent-review-2026-09-27.md)。
+
+
+## 後續排查：2026 年 9 月 27 日 12:47
+
+使用者要求處理「無法擷取」後，已直接測試兩個報表中的完整 XML 網址，而不是只以首頁能開啟作為證據。
+
+| Google 即時測試 | 測試時間（臺灣） | 是否允許檢索 | 網頁擷取 | 是否允許索引 |
+| --- | --- | --- | --- | --- |
+| 遊戲 Sitemap | 12:43:51 | 是 | 成功 | 是 |
+| 根 Sitemap index | 12:46:42 | 是 | 成功 | 是 |
+
+- 兩次測試的代理程式均為「Google 檢查工具（智慧型手機）」。這證明 Google 當下能取得 XML，不能代替 Sitemap 報表已解析成功的證據。
+- 已將兩個原始 Sitemap 各重新提交一次，並直接提交既有 `root-sitemap.xml` 以隔離 index 與 child。
+- Search Console 的人工判決處罰、安全性問題均顯示「未偵測到任何問題」。
+- 網路交叉檢查：10 次一般／Googlebot UA 請求、9 次普通／壓縮／no-cache 請求、8 次 GitHub IPv4 edge 請求全部 HTTP 200、無重新導向，內容雜湊一致；三個 XML 與發布原檔逐位元組一致。
+- XML、同 hostname 路徑、canonical、robots 與 HTTPS 檢查通過。目前沒有發現應修改網站程式或 XML 的證據，因此維持有效發布內容。
+- 重提後的 Sitemap 報表仍為「未知／無法擷取」，尚未觀測到解析成功或探索網頁數增加；不能宣稱此狀態已解決，也不能確認 Google 尚未處理的具體內部原因。
+
+[Google 官方 Sitemap 報表說明](https://support.google.com/webmasters/answer/7451001?hl=en) 說明 `Unknown` 也可能代表尚未處理，並建議對實際 Sitemap 網址執行即時 URL 檢查。本次已依該流程取得 Google 端成功擷取的結果，沒有為了改掉錯誤顯示而刪除原紀錄或隨意更換有效 XML。
