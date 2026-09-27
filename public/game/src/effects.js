@@ -3,6 +3,10 @@ import { characterVoice } from './voices.js';
 
 const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
 const EASE_MOVE = 'cubic-bezier(0.77, 0, 0.175, 1)';
+const IMPACT_MS = 350;
+const CHARGE_MS = 850;
+const MAX_EFFECTS = 32;
+const MAX_ANIMATIONS = 72;
 const keyOf = entity => `${entity.side}:${entity.kind}:${entity.kind === 'hero' ? '' : entity.uid}`;
 const bounds = element => {
   const { left, top, width, height } = element.getBoundingClientRect();
@@ -23,6 +27,9 @@ export function createBattleEffects({ root }) {
   const timers = new Set();
   const waiters = new Map();
   let repositionFrame = null;
+  let generation = 0;
+  let chargeEndsAt = 0;
+  const now = () => win.performance?.now?.() ?? Date.now();
 
   function capture() {
     const frame = { entities: new Map(), slots: new Map(), energy: new Map() };
@@ -70,15 +77,46 @@ export function createBattleEffects({ root }) {
   }
 
   function motion(element, frames, duration, easing = EASE_OUT) {
-    if (!element.animate) return;
-    const animation = element.animate(frames, { duration, easing });
-    animations.add(animation);
-    animation.finished.then(() => animations.delete(animation), () => animations.delete(animation));
+    if (!element?.animate) return null;
+    try {
+      if (animations.size >= MAX_ANIMATIONS) {
+        const oldest = animations.values().next().value;
+        try { oldest.cancel(); } catch { /* The deadline still releases the visual. */ }
+        animations.delete(oldest);
+      }
+      const animation = element.animate(frames, { duration, easing });
+      animations.add(animation);
+      Promise.resolve(animation.finished).then(() => animations.delete(animation), () => animations.delete(animation));
+      return animation;
+    } catch { return null; }
+  }
+
+  function register(item) {
+    while (items.size >= MAX_EFFECTS) remove([...items].find(existing => existing.kind !== 'ghost') || items.values().next().value);
+    layer.append(item.node);
+    items.add(item);
+    return item;
+  }
+
+  function wait(duration) {
+    if (duration <= 0) return Promise.resolve();
+    return new Promise(resolve => {
+      const timer = later(() => { waiters.delete(timer); resolve(); }, duration);
+      waiters.set(timer, resolve);
+    });
   }
 
   function remove(item) {
+    if (!items.has(item)) return;
     for (const timer of item.timers) { win.clearTimeout(timer); timers.delete(timer); }
+    let attached = [];
+    try { attached = item.node.getAnimations?.({ subtree: true }) || []; } catch { /* Older engines may not support subtree lookup. */ }
+    for (const animation of attached) {
+      try { animation.cancel(); } catch { /* Removing the node is the visual fallback. */ }
+      animations.delete(animation);
+    }
     for (const [element, visibility] of item.hidden || []) element.style.visibility = visibility;
+    item.hidden?.clear();
     item.node.remove();
     items.delete(item);
   }
@@ -86,9 +124,28 @@ export function createBattleEffects({ root }) {
   function sync() {
     const frame = capture();
     for (const item of items) {
-      if (item.kind !== 'ghost') continue;
-      const element = frame.entities.get(keyOf(item.entity))?.element;
+      const located = frame.entities.get(keyOf(item.entity));
+      // A vacated slot may already belong to a summon; effects follow the UID.
+      if (item.entity.kind === 'card' && !located) { remove(item); continue; }
+      if (item.kind !== 'ghost') {
+        if (item.kind === 'outline' && located) {
+          Object.assign(item.node.style, {
+            left: `${located.rect.left}px`, top: `${located.rect.top}px`,
+            width: `${located.rect.width}px`, height: `${located.rect.height}px`,
+          });
+        } else if (item.kind === 'burst' && located) {
+          Object.assign(item.node.style, {
+            left: `${located.rect.left + located.rect.width / 2}px`,
+            top: `${located.rect.top + located.rect.height * .45}px`,
+          });
+        } else position(item, frame);
+        continue;
+      }
+      const element = located?.element;
       if (!element) continue;
+      for (const [old, visibility] of item.hidden) {
+        if (old !== element) { old.style.visibility = visibility; item.hidden.delete(old); }
+      }
       if (!item.hidden.has(element)) item.hidden.set(element, element.style.visibility || '');
       element.style.visibility = 'hidden';
       for (const selector of ['.attack-stat', '.health-stat']) {
@@ -96,7 +153,9 @@ export function createBattleEffects({ root }) {
         const displayed = item.node.querySelector(selector);
         if (current && displayed) {
           displayed.className = current.className;
-          displayed.querySelector('b').textContent = current.querySelector('b').textContent;
+          const currentValue = current.querySelector('b');
+          const displayedValue = displayed.querySelector('b');
+          if (currentValue && displayedValue) displayedValue.textContent = currentValue.textContent;
         }
       }
     }
@@ -146,18 +205,18 @@ export function createBattleEffects({ root }) {
     node.className = `battle-fx-popup battle-fx-${kind}`;
     node.dataset.effect = kind;
     node.dataset.side = entity.side;
+    if (entity.kind === 'hero') node.dataset.hero = 'true';
     if (entity.uid !== undefined) node.dataset.effectUid = String(entity.uid);
     node.textContent = text;
-    const item = { node, kind, entity, energy, timers: [], placed: null };
-    layer.append(node);
-    items.add(item);
+    const item = register({ node, kind, entity, energy, timers: [], placed: null });
     position(item, frame);
     const reduce = reducedMotion.matches;
-    motion(node, reduce ? [{ opacity: 0 }, { opacity: 1 }] : [
-      { opacity: 0, transform: 'translateY(10px) scale(.96)' },
+    motion(node, reduce ? [{ opacity: 0 }, { opacity: 1 }] : kind === 'damage' ? [
+      { opacity: 0, transform: 'translateY(5px) scale(.9)' },
+      { opacity: 1, transform: 'translateY(0) scale(1.14)', offset: .45 },
       { opacity: 1, transform: 'translateY(0) scale(1)' },
-    ], 180);
-    item.timers.push(later(() => motion(node, [{ opacity: 1 }, { opacity: 0 }], 160), life - 160));
+    ] : [{ opacity: 0, transform: 'translateY(8px) scale(.96)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], 200);
+    item.timers.push(later(() => motion(node, reduce ? [{ opacity: 1 }, { opacity: 0 }] : [{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-10px)' }], 180), life - 180));
     item.timers.push(later(() => remove(item), life));
     return item;
   }
@@ -184,9 +243,7 @@ export function createBattleEffects({ root }) {
       left: `${located.rect.left}px`, top: `${located.rect.top}px`,
       width: `${located.rect.width}px`, height: `${located.rect.height}px`,
     });
-    layer.append(node);
-    const item = { node, kind: 'outline', entity, timers: [] };
-    items.add(item);
+    const item = register({ node, kind: 'outline', entity, timers: [] });
     motion(node, ['impact', 'guard'].includes(kind) && !reducedMotion.matches ? [
       { opacity: 1, transform: 'scale(.9)' },
       { opacity: 0, transform: 'scale(1.14)' },
@@ -194,14 +251,45 @@ export function createBattleEffects({ root }) {
     item.timers.push(later(() => remove(item), duration));
   }
 
+  function impact(entity, frame, shield = false) {
+    const located = anchor(entity, frame);
+    if (!located) return;
+    outline(entity, frame, shield ? 'guard' : 'impact', 300);
+    if (reducedMotion.matches) return;
+    const node = doc.createElement('div');
+    node.className = `battle-fx-burst ${shield ? 'is-shield' : ''}`;
+    node.dataset.effect = shield ? 'shield-break' : 'impact-burst';
+    Object.assign(node.style, { left: `${located.rect.left + located.rect.width / 2}px`, top: `${located.rect.top + located.rect.height * .45}px` });
+    const item = register({ node, kind: 'burst', entity, timers: [] });
+    const count = shield ? 3 : 6;
+    for (let index = 0; index < count; index++) {
+      const spark = doc.createElement('i');
+      node.append(spark);
+      const angle = shield ? (index - 1) * 48 : index * 60 + 15;
+      const distance = Math.min(63, located.rect.width * .65) + (index % 2) * 8;
+      motion(spark, [
+        { opacity: 0, transform: `rotate(${angle}deg) translateY(-8px) scale(.92)` },
+        { opacity: 1, transform: `rotate(${angle}deg) translateY(-${distance * .55}px) scale(1)`, offset: .2 },
+        { opacity: 0, transform: `rotate(${angle + (shield ? 22 : 0)}deg) translateY(-${distance}px) scale(.92)` },
+      ], shield ? 400 : 320);
+    }
+    item.timers.push(later(() => remove(item), shield ? 410 : 330));
+  }
+
   function charge(actor, target, frame) {
     const from = anchor(actor, frame);
     const to = anchor(target, frame);
+    chargeEndsAt = now() + CHARGE_MS;
     if (!from?.element || !to) return;
-    if (reducedMotion.matches) { outline(actor, frame, 'attack', 350); outline(target, frame, 'hit', 350); return; }
+    outline(target, frame, 'target', IMPACT_MS);
+    if (reducedMotion.matches || !from.element.animate) {
+      outline(actor, frame, 'attack', IMPACT_MS);
+      return;
+    }
     const ghost = from.element.cloneNode(true);
     ghost.removeAttribute('data-card-uid');
     ghost.removeAttribute('id');
+    ghost.removeAttribute('draggable');
     ghost.querySelectorAll('[id],[data-action],[data-uid],[data-card-uid]').forEach(element => {
       for (const attribute of ['id', 'data-action', 'data-uid', 'data-card-uid']) element.removeAttribute(attribute);
     });
@@ -209,36 +297,50 @@ export function createBattleEffects({ root }) {
     ghost.dataset.effect = 'attack';
     ghost.inert = true;
     Object.assign(ghost.style, { left: `${from.rect.left}px`, top: `${from.rect.top}px`, width: `${from.rect.width}px`, height: `${from.rect.height}px`, visibility: 'visible' });
-    layer.append(ghost);
-    const item = { node: ghost, kind: 'ghost', entity: actor, timers: [], hidden: new Map() };
-    items.add(item);
-    sync();
+    const item = register({ node: ghost, kind: 'ghost', entity: actor, timers: [], hidden: new Map() });
     const dx = to.rect.left + to.rect.width / 2 - from.rect.left - from.rect.width / 2;
     const dy = to.rect.top + to.rect.height / 2 - from.rect.top - from.rect.height / 2;
-    motion(ghost, [
-      { transform: 'translate(0,0) scale(1)', easing: EASE_MOVE },
-      { transform: `translate(${dx}px,${dy}px) scale(1.04)`, offset: .5, easing: EASE_MOVE },
-      { transform: 'translate(0,0) scale(1)' },
-    ], 700, 'linear');
-    item.timers.push(later(() => outline(target, capture(), 'impact', 260), 350));
-    item.timers.push(later(() => remove(item), 700));
+    const distance = Math.max(1, Math.hypot(dx, dy));
+    const recoilX = -dx / distance * 10;
+    const recoilY = -dy / distance * 10;
+    const tilt = Math.max(-4, Math.min(4, dx / 70));
+    const hit = `translate(${dx}px,${dy}px) rotate(0deg) scale(1.055)`;
+    const animation = motion(ghost, [
+      { transform: 'translate(0,0) rotate(0deg) scale(1)', easing: EASE_OUT },
+      { transform: `translate(${recoilX}px,${recoilY}px) rotate(${-tilt}deg) scale(1.035)`, offset: 120 / CHARGE_MS, easing: EASE_MOVE },
+      { transform: hit, offset: IMPACT_MS / CHARGE_MS, easing: 'linear' },
+      { transform: hit, offset: 430 / CHARGE_MS, easing: EASE_OUT },
+      { transform: `translate(${-recoilX * .35}px,${-recoilY * .35}px) rotate(${tilt * .4}deg) scale(1.015)`, offset: 750 / CHARGE_MS, easing: EASE_OUT },
+      { transform: 'translate(0,0) rotate(0deg) scale(1)' },
+    ], CHARGE_MS, 'linear');
+    if (!animation) { remove(item); outline(actor, frame, 'attack', IMPACT_MS); return; }
+    sync();
+    item.timers.push(later(() => impact(target, capture()), IMPACT_MS));
+    item.timers.push(later(() => remove(item), CHARGE_MS));
   }
 
-  function play(step, beforeFrame = capture()) {
+  async function play(step, beforeFrame = capture()) {
+    const started = generation;
+    if (step.type === 'attack' && chargeEndsAt > now()) {
+      await wait(chargeEndsAt - now());
+      if (started !== generation) return;
+      beforeFrame = capture();
+    }
     const changes = step.changes || [];
     const target = step.target || step.actor;
     let duration = 0;
     if (step.type === 'attack') {
       charge(step.actor, step.target, beforeFrame);
       speak(step.actor, 'attack', beforeFrame);
-      duration = 350;
+      duration = IMPACT_MS;
     } else if (step.type === 'guard' || step.type === 'shield') {
       const blocked = changes.some(change => change.field === 'shield' && change.amount < 0);
-      const guard = popup(`🛡\n${step.type === 'shield' ? blocked ? '護盾抵擋' : '獲得護盾' : '守護承擋'}`, 'guard', target, beforeFrame, { life: 760 });
+      const guard = popup(`${step.type === 'shield' ? blocked ? '護盾破裂' : '獲得護盾' : '守護承擋'}`, 'guard', target, beforeFrame, { life: 760 });
       if (guard && step.type === 'shield') guard.node.dataset.shieldState = blocked ? 'blocked' : 'gained';
-      outline(target, beforeFrame, 'guard', 350);
+      if (blocked) impact(target, beforeFrame, true);
+      else outline(target, beforeFrame, 'guard', 350);
       speak(target, 'defend', beforeFrame);
-      duration = blocked && [...items].some(item => item.kind === 'ghost') ? 0 : 250;
+      duration = blocked && chargeEndsAt > now() ? 0 : 250;
     } else if (['summon', 'buy', 'reward', 'triple'].includes(step.type)) {
       outline(target, beforeFrame, 'summon', 200);
       speak(target, 'summon', beforeFrame);
@@ -247,10 +349,10 @@ export function createBattleEffects({ root }) {
     } else if (step.type === 'death') {
       const element = anchor(target, beforeFrame)?.element;
       if (element) motion(element, reducedMotion.matches
-        ? [{ opacity: 1 }, { opacity: .2 }]
-        : [{ opacity: 1, transform: 'scale(1)' }, { opacity: .2, transform: 'scale(.96)' }], 260);
-      outline(target, beforeFrame, 'death', 260);
-      duration = 260;
+        ? [{ opacity: 1 }, { opacity: 0 }]
+        : [{ opacity: 1, transform: 'translateY(0) scale(1)' }, { opacity: .65, transform: 'translateY(3px) scale(.98)', offset: .35 }, { opacity: 0, transform: 'translateY(14px) scale(.92)' }], 300);
+      outline(target, beforeFrame, 'death', 280);
+      duration = 300;
     }
     let voices = 0;
     for (const change of changes) {
@@ -267,7 +369,8 @@ export function createBattleEffects({ root }) {
           ], 180, EASE_MOVE);
           if (voices++ < 2) speak(change.target, 'hurt', beforeFrame);
         }
-        duration = Math.max(duration, 450);
+        duration = Math.max(duration, 520);
+        if (hurt && change.target.kind === 'hero') impact(change.target, beforeFrame);
       } else if (change.field === 'gold') {
         popup(`${change.amount < 0 ? '−' : '+'}${Math.abs(change.amount)} 金幣`, 'gold', change.target, beforeFrame, { energy: true });
         duration = Math.max(duration, 160);
@@ -276,17 +379,15 @@ export function createBattleEffects({ root }) {
         duration = Math.max(duration, 180);
       }
     }
-    if (!duration) return Promise.resolve();
-    return new Promise(resolve => {
-      const timer = later(() => { waiters.delete(timer); resolve(); }, duration);
-      waiters.set(timer, resolve);
-    });
+    return wait(duration);
   }
 
   function cancel() {
+    generation++;
+    chargeEndsAt = 0;
     if (repositionFrame !== null) win.cancelAnimationFrame(repositionFrame);
     repositionFrame = null;
-    for (const animation of animations) animation.cancel();
+    for (const animation of animations) { try { animation.cancel(); } catch { /* Visual nodes are removed below. */ } }
     animations.clear();
     [...items].forEach(remove);
     for (const timer of timers) win.clearTimeout(timer);
@@ -301,7 +402,8 @@ export function createBattleEffects({ root }) {
       repositionFrame = null;
       const frame = capture();
       for (const item of items) {
-        if (item.kind === 'ghost' || item.kind === 'outline') remove(item);
+        if (['ghost', 'outline', 'burst'].includes(item.kind) ||
+          (item.entity.kind === 'card' && !frame.entities.has(keyOf(item.entity)))) remove(item);
         else position(item, frame);
       }
     });

@@ -13,6 +13,7 @@ let run = loaded.state || createRun();
 let shown = structuredClone(run);
 let busy = false;
 let playbackId = 0;
+let playbackController = null;
 let selectedUid = null;
 let previewOpen = false;
 let renderedPhase = '';
@@ -149,7 +150,12 @@ function render(preferredFocus = focusKey()) {
   if (renderedPhase && renderedPhase !== phase) window.scrollTo({ top: 0, behavior: 'instant' });
   renderedPhase = phase;
   updateShopControls();
-  effects.sync?.();
+  try { effects.sync?.(); }
+  catch (error) {
+    if (busy) throw error;
+    console.warn('Battle effect synchronisation failed.', error);
+    cancelEffects();
+  }
   if (preferredFocus) restoreFocus(preferredFocus);
 }
 
@@ -161,7 +167,51 @@ function updateShopControls() {
   });
 }
 
-function stopPlayback() { playbackId++; effects.cancel(); busy = false; }
+function cancelEffects() {
+  try { effects.cancel(); }
+  catch (error) { console.warn('Battle effect cleanup failed.', error); }
+}
+function stopPlayback() {
+  playbackId++;
+  playbackController?.abort();
+  playbackController = null;
+  busy = false;
+  cancelEffects();
+}
+async function playVisualStep(step, signal) {
+  while (!signal.aborted) {
+    const status = await new Promise((resolve, reject) => {
+      let timer, started = false, settled = false;
+      const finish = (value, error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+        document.removeEventListener('visibilitychange', onVisibility);
+        if (error) reject(error); else resolve(value);
+      };
+      const onAbort = () => finish('cancelled');
+      const onVisibility = () => {
+        if (signal.aborted) { onAbort(); return; }
+        if (document.hidden) {
+          if (started) { cancelEffects(); finish('paused'); }
+          return;
+        }
+        if (started) return;
+        started = true;
+        // A broken animation driver must never hold the already-saved result.
+        timer = setTimeout(() => finish(null, new Error('Battle animation exceeded 5000ms.')), 5000);
+        Promise.resolve().then(() => {
+          if (!settled) return effects.play(step, effects.capture());
+        }).then(() => finish('complete'), error => finish(null, error));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      document.addEventListener('visibilitychange', onVisibility);
+      onVisibility();
+    });
+    if (status !== 'paused') return;
+  }
+}
 async function act(action, ...args) {
   if (busy) return;
   const preferred = focusKey();
@@ -170,10 +220,13 @@ async function act(action, ...args) {
   if (!result.ok) { announce(result.message); render(preferred); return; }
   persist();
   const id = ++playbackId;
+  const controller = new AbortController();
+  playbackController = controller;
+  let playbackFailed = false;
   busy = true;
   announce(action === startCombat ? '戰鬥開始，夥伴正在自動出手。' : result.message || '已完成操作。');
-  render();
   try {
+    render();
     for (const step of result.timeline || []) {
       if (id !== playbackId) return;
       if (step.type === 'attack') {
@@ -182,15 +235,19 @@ async function act(action, ...args) {
       }
       const updateAtImpact = step.type === 'damage';
       if (updateAtImpact) { shown = step.snapshot; render(); }
-      await effects.play(step, effects.capture());
+      await playVisualStep(step, controller.signal);
       if (id !== playbackId) return;
       if (!updateAtImpact) { shown = step.snapshot; render(); }
     }
+  } catch (error) {
+    if (id === playbackId) { playbackFailed = true; console.warn('Battle playback recovered to the saved state.', error); }
   } finally {
     if (id === playbackId) {
+      playbackController = null;
+      cancelEffects();
       shown = structuredClone(run);
       busy = false;
-      announce(result.message || '已完成操作。');
+      announce(playbackFailed ? action === startCombat ? '動畫中斷，已保留本場結果，可繼續下一步。' : '動畫中斷，已完成此次操作。' : result.message || '已完成操作。');
       if (!unitList(shown).some(unit => String(unit.uid) === String(selectedUid))) selectedUid = null;
       render(action === nextRound ? 'shop-title' : action === sell ? 'team-title' : focusKey() || preferred);
       if (action === buy || action === chooseTripleReward) {
