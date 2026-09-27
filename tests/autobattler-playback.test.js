@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import * as engine from '../public/game/src/autobattler.js';
 import { CONFIG, ROSTER, TRAITS, getCharacter } from '../public/game/src/roster.js';
 import { loadRun, saveRun, clearRun } from '../public/game/src/storage.js';
+import { CHARACTER_STORIES, CHARACTER_STORY_NOTE } from '../public/game/src/character-stories.js';
 
 // Execute the real UI controller with its engine and storage. Only browser
 // surfaces and the animation driver are replaced, so races remain observable.
@@ -19,7 +20,7 @@ function prepared() {
   state.opponent.board = [unit(4, 7)];
   return state;
 }
-function harness(state = prepared(), { enterRun = true, reducedMotion = false } = {}) {
+function harness(state = prepared(), { enterRun = true, reducedMotion = false, canHover = true, narrowScreen = false } = {}) {
   const data = new Map(), pending = [], calls = [], timers = new Map(), warnings = [];
   let saves = 0, timerId = 0, now = 10_000, qa;
   const store = { getItem: key => data.get(key) ?? null, setItem(key, value) { saves++; data.set(key, value); }, removeItem: key => data.delete(key) };
@@ -29,31 +30,42 @@ function harness(state = prepared(), { enterRun = true, reducedMotion = false } 
     return {
       addEventListener(name, fn) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); },
       removeEventListener(name, fn) { listeners.get(name)?.delete(fn); },
-      dispatch(name, event = {}) { for (const fn of [...(listeners.get(name) || [])]) fn(event); },
+      dispatch(name, event = {}) { for (const fn of [...(listeners.get(name) || [])]) fn({ type: name, ...event }); },
       count(name) { return listeners.get(name)?.size || 0; },
     };
   }
-  function element() { return { ...eventTarget(), innerHTML: '', textContent: '', open: false, dataset: {}, style: {}, children: [], classList: { add() {}, remove() {} },
+  function element() { const classes = new Set(); return { ...eventTarget(), innerHTML: '', textContent: '', open: false, dataset: {}, style: {}, children: [], classList: {
+    add(...names) { names.forEach(name => classes.add(name)); }, remove(...names) { names.forEach(name => classes.delete(name)); }, contains: name => classes.has(name),
+    toggle(name, force = !classes.has(name)) { if (force) classes.add(name); else classes.delete(name); return force; },
+  },
     querySelector: () => null, querySelectorAll: () => [], showModal() { this.open = true; }, close() { this.open = false; }, scrollIntoView() {},
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 120 }), cloneNode: () => element(), setAttribute() {}, removeAttribute() {},
     append(node) { node.parent = this; this.children.push(node); }, remove() { if (this.parent) this.parent.children = this.parent.children.filter(node => node !== this); },
   }; }
-  const app = element(), dialog = element(), live = element();
+  const app = element(), dialog = element(), live = element(), inspector = element(), panel = element(), pin = element();
+  let appHTML = '', renders = 0;
+  Object.defineProperty(app, 'innerHTML', { get: () => appHTML, set(value) {
+    appHTML = value; renders++;
+    inspector.innerHTML = value.match(/<div id="inspector-content"[^>]*>([\s\S]*)<\/div><\/aside>/)?.[1] || '';
+    panel.classList.toggle('is-open', /<aside class="card-inspector[^\"]*\bis-open/.test(value));
+  } });
+  app.querySelector = selector => !appHTML.includes('id="inspector-content"') ? null : selector === '#inspector-content' ? inspector : selector === '.card-inspector' ? panel : null;
+  panel.querySelector = selector => selector === '[data-action="inspector-pin"]' ? pin : null;
   const document = { ...eventTarget(), body: element(), hidden: false, activeElement: null, querySelector: selector => selector === '#app' ? app : selector === '#game-dialog' ? dialog : live };
-  const window = { ...eventTarget(), scrollTo() {}, matchMedia: () => ({ matches: reducedMotion }) };
+  const window = { ...eventTarget(), scrollTo() {}, matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query === '(hover: hover)' ? canHover : query === '(max-width: 1099px)' ? narrowScreen : false }) };
   const fx = {
     capture: () => ({}), sync() {},
     cancel() { while (pending.length) pending.shift()(); },
     play(step) { calls.push({ step, shown: copy(qa.shown()) }); return new Promise(resolve => pending.push(resolve)); },
   };
   class ClockDate extends Date { static now() { return now; } }
-  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, getCharacter, structuredClone, URL, AbortController, document, window, Date: ClockDate,
+  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, getCharacter, CHARACTER_STORIES, CHARACTER_STORY_NOTE, structuredClone, URL, AbortController, document, window, Date: ClockDate,
     console: { warn: (...args) => warnings.push(args), error: (...args) => warnings.push(args) },
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay, at: now + delay }); return id; }, clearTimeout: id => timers.delete(id),
     requestAnimationFrame(fn) { const id = ++timerId; timers.set(id, { fn, delay: 16, at: now + 16 }); return id; }, cancelAnimationFrame: id => timers.delete(id),
     createBattleEffects: () => fx, loadRun: () => loadRun(store), saveRun: state => saveRun(state, store), clearRun: () => clearRun(store), installThemeBridge() {},
   });
-  vm.runInContext(source + '\nglobalThis.__qa = { act, newRun, run: () => run, shown: () => shown, busy: () => busy, screen: () => screen };', context, { filename: 'autobattler-app.js' });
+  vm.runInContext(source + '\nglobalThis.__qa = { act, newRun, run: () => run, shown: () => shown, busy: () => busy, screen: () => screen, selection: () => selectedUid };', context, { filename: 'autobattler-app.js' });
   qa = context.__qa;
   const click = (action, extra = {}) => document.dispatch('click', { preventDefault() {}, target: { closest: () => ({ disabled: false, dataset: { action, ...extra } }) } });
   // Stored adventures now enter through the real lobby action. Preserve every
@@ -97,7 +109,22 @@ function harness(state = prepared(), { enterRun = true, reducedMotion = false } 
     const pointer = beginDrag(kind, uid, destination);
     pointer.release(cancel); pointer.release(); // A duplicated release cannot purchase twice.
   }
-  return { qa, fx, calls, pending, timers, warnings, document, window, app, live, click, visible, drain, settled, finishAction, advance, beginDrag, drag, store, visibilityBaseline, get saves() { return saves; } };
+  function cardTarget(criteria) {
+    const tags = [...`${app.innerHTML}\n${dialog.innerHTML}`.matchAll(/<button\b[^>]*>/g)];
+    for (const [tag] of tags) {
+      const dataset = {};
+      for (const [, name, value] of tag.matchAll(/data-([\w-]+)="([^"]*)"/g)) dataset[name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
+      if (!dataset.inspectCard || !Object.entries(criteria).every(([key, value]) => dataset[key] === String(value))) continue;
+      const target = { dataset, disabled: /\sdisabled(?:\s|>|=)/.test(tag), closest: selector => ['[data-inspect-card]', '[data-action]'].includes(selector) ? target : null };
+      return target;
+    }
+    assert.fail(`No rendered card matches ${JSON.stringify(criteria)}`);
+  }
+  const inspect = (criteria, event = 'pointerover', pointerType = 'mouse') => {
+    const target = cardTarget(criteria);
+    document.dispatch(event, { target, pointerType, preventDefault() {} }); return target;
+  };
+  return { qa, fx, calls, pending, timers, warnings, document, window, app, live, dialog, inspector, panel, click, inspect, cardTarget, visible, drain, settled, finishAction, advance, beginDrag, drag, store, visibilityBaseline, get renders() { return renders; }, get saves() { return saves; } };
 }
 
 test('animation rejection or missing capture recovers to the saved result without rerunning combat', async () => {
@@ -393,4 +420,190 @@ test('returning to the lobby during combat keeps its single saved result and ign
   assert.equal(h.qa.screen(), 'run'); assert.deepEqual(h.qa.run(), result); assert.deepEqual(h.qa.shown(), result);
   assert.deepEqual(loadRun(h.store).state, result); assert.equal(h.saves, saves); assert.equal(h.qa.busy(), false);
   assert.equal(h.timers.size, 0); assert.equal(h.document.count('visibilitychange'), h.visibilityBaseline);
+});
+
+function inspection(h) {
+  const html = h.inspector.innerHTML;
+  return {
+    html, id: Number(html.match(/data-inspected-card="(\d+)"/)?.[1]),
+    uid: html.match(/data-inspected-uid="([^"]*)"/)?.[1], source: html.match(/data-inspected-source="([^"]*)"/)?.[1],
+    status: html.match(/class="inspector-status">([^<]*)<\/p>/)?.[1],
+    attack: Number(html.match(/class="inspector-attack">[\s\S]*?<b>(\d+)<\/b>/)?.[1]),
+    hp: Number(html.match(/class="inspector-health">[\s\S]*?<b>(\d+)<\/b>/)?.[1]),
+  };
+}
+async function untilVisual(h, predicate) {
+  for (let step = 0; step < 400 && !predicate(); step++) { h.pending.shift()?.(); await tick(); }
+  assert(predicate(), 'expected real combat snapshot must be reached');
+}
+function encounterRun(round = 3) {
+  const state = prepared(); Object.assign(state.player.board[0], { attack: 100, hp: 100, maxHp: 100 });
+  while (state.round < round) { engine.startCombat(state, { recordTimeline: false }); engine.nextRound(state); }
+  Object.assign(state.player.board[0], { attack: 3, hp: 8, maxHp: 8 });
+  return state;
+}
+
+test('hover and focus inspect exact duplicate-card UIDs without spending, selecting or rebuilding the board', () => {
+  const state = prepared(), first = state.player.board[0];
+  const second = { ...first, uid: `u-${state.nextUid++}`, golden: true, attack: 8, hp: 10, maxHp: 10 };
+  state.player.bench = [second]; state.shop.offers = [{ uid: `u-${state.nextUid++}`, cardId: first.cardId }];
+  const h = harness(state), before = copy(h.qa.run()), renders = h.renders;
+  h.inspect({ inspectSource: 'owned', inspectUid: first.uid });
+  assert.equal(inspection(h).uid, first.uid); assert.equal(inspection(h).attack, 3); assert.equal(inspection(h).hp, 8);
+  h.inspect({ inspectSource: 'owned', inspectUid: second.uid }, 'focusin');
+  assert.equal(inspection(h).uid, second.uid); assert.equal(inspection(h).attack, 8); assert.equal(inspection(h).hp, 10);
+  assert.match(inspection(h).html, /金卡/);
+  h.inspect({ inspectSource: 'shop', inspectOffer: state.shop.offers[0].uid });
+  assert.equal(inspection(h).attack, 1); assert.equal(inspection(h).hp, 5); assert.equal(inspection(h).source, 'shop');
+  assert.equal(h.renders, renders); assert.equal(h.qa.selection(), null); assert.equal(h.saves, 0); assert.deepEqual(h.qa.run(), before);
+  h.inspect({ inspectSource: 'owned', inspectUid: first.uid }, 'click');
+  h.click('inspector-pin'); // Allow previews again while keeping the placement selection.
+  const selectedRenders = h.renders;
+  h.inspect({ inspectSource: 'owned', inspectUid: second.uid }, 'focusin');
+  assert.equal(h.qa.selection(), first.uid); assert.equal(inspection(h).uid, second.uid);
+  assert.equal(h.renders, selectedRenders); assert.equal(h.saves, 0); assert.deepEqual(h.qa.run(), before);
+});
+
+test('all 24 card panels show their current identity, rules, quote and original story', () => {
+  for (const card of ROSTER) {
+    const state = prepared(); state.shop.offers = [{ uid: `u-${state.nextUid++}`, cardId: card.id }]; state.player.tier = 4; state.player.upgradeCost = 0;
+    const h = harness(state); h.inspect({ inspectSource: 'shop', inspectCard: card.id }, 'focusin');
+    const shown = inspection(h);
+    assert.equal(shown.id, card.id); assert.equal(shown.attack, card.attack); assert.equal(shown.hp, card.health);
+    for (const text of [card.region, card.job, card.shortText, card.quote, CHARACTER_STORIES[card.id], CHARACTER_STORY_NOTE]) assert(shown.html.includes(text), `${card.id}: ${text}`);
+    assert.equal(h.saves, 0); assert.equal(h.qa.run().phase, 'recruit');
+  }
+});
+
+test('pinned owned and opponent panels follow shown combat damage and never restore a defeated unit to permanent HP', async () => {
+  for (const source of ['owned', 'opponent']) {
+    const h = harness(), unit = source === 'owned' ? h.qa.run().player.board[0] : h.qa.run().opponent.board[0];
+    if (source === 'opponent') h.click('team-info');
+    h.inspect({ inspectSource: source, inspectUid: unit.uid }, 'click');
+    const play = h.qa.act(engine.startCombat); await tick();
+    const side = source === 'owned' ? 'player' : 'enemy';
+    await untilVisual(h, () => h.qa.shown().phase === 'combat' && h.qa.shown().combat[side].some(item => item.uid === unit.uid && item.hp > 0 && item.hp < unit.hp));
+    const current = h.qa.shown().combat[side].find(item => item.uid === unit.uid);
+    assert.equal(inspection(h).source, `combat-${side}`); assert.equal(inspection(h).hp, current.hp);
+    assert.equal(inspection(h).attack, current.attack); assert.match(inspection(h).status, /戰鬥中/);
+    if (source === 'owned') {
+      await untilVisual(h, () => h.qa.shown().phase === 'combat' && !h.qa.shown().combat.player.some(item => item.uid === unit.uid));
+      assert.equal(inspection(h).hp, 0); assert.match(inspection(h).status, /已退場/);
+      assert.equal(h.qa.run().player.board[0].hp, unit.hp, 'permanent board is healed but the inspector must not use it');
+    }
+    await h.drain(play); assert.equal(h.saves, 1);
+    if (source === 'owned') assert.equal(inspection(h).hp, 0);
+    h.click('next'); await h.finishAction(); assert.match(h.inspector.innerHTML, /inspector-empty/);
+  }
+});
+
+test('a pinned encounter preview becomes the real enemy instance and follows its first damage', async () => {
+  const h = harness(encounterRun()), monster = engine.getEncounterOffer(h.qa.run()).board[0];
+  h.click('encounter-info'); h.inspect({ inspectSource: 'encounter', inspectUid: monster.uid }, 'click');
+  assert.equal(inspection(h).hp, 4);
+  const play = h.qa.act(engine.startEncounter); await tick();
+  await untilVisual(h, () => h.qa.shown().phase === 'combat' && h.qa.shown().combat.enemy.some(unit => unit.uid === monster.uid && unit.hp > 0 && unit.hp < monster.hp));
+  const damaged = h.qa.shown().combat.enemy.find(unit => unit.uid === monster.uid);
+  assert.equal(inspection(h).source, 'combat-enemy'); assert.equal(inspection(h).hp, damaged.hp);
+  assert.match(inspection(h).status, /戰鬥中/); assert(inspection(h).html.includes(CHARACTER_STORIES[monster.cardId]));
+  await h.drain(play); assert.equal(h.saves, 1);
+});
+
+test('bench cards and uninvolved opponents do not become defeated units in a different combat', async () => {
+  for (const source of ['owned', 'opponent', 'encounter']) {
+    const state = encounterRun();
+    state.player.bench = [{ ...state.player.board[0], uid: `u-${state.nextUid++}`, attack: 9, hp: 9, maxHp: 9 }];
+    const h = harness(state);
+    const unit = source === 'owned' ? state.player.bench[0] : source === 'opponent' ? state.opponent.board[0] : engine.getEncounterOffer(state).board[0];
+    if (source === 'opponent') h.click('team-info');
+    if (source === 'encounter') h.click('encounter-info');
+    h.inspect({ inspectSource: source, inspectUid: unit.uid }, 'click');
+    const play = h.qa.act(source === 'opponent' ? engine.startEncounter : engine.startCombat); await tick();
+    await untilVisual(h, () => h.qa.shown().phase === 'combat');
+    assert.equal(inspection(h).source, source); assert.equal(inspection(h).hp, unit.hp);
+    assert.doesNotMatch(inspection(h).status, /已退場/);
+    await h.drain(play); assert.equal(h.saves, 1);
+  }
+});
+
+test('all three monster panels use encounter stats and the combat-only puppet uses its summon record', async () => {
+  for (const [round, cardId] of [[3, 201], [6, 202], [9, 203]]) {
+    const h = harness(encounterRun(round)), monster = engine.getEncounterOffer(h.qa.run()).board.find(unit => unit.cardId === cardId);
+    h.click('encounter-info'); h.inspect({ inspectSource: 'encounter', inspectUid: monster.uid }, 'click');
+    assert.equal(inspection(h).id, cardId); assert.equal(inspection(h).attack, monster.attack); assert.equal(inspection(h).hp, monster.hp);
+    assert(inspection(h).html.includes(CHARACTER_STORIES[cardId])); assert.equal(h.saves, 0);
+  }
+  const state = prepared(); Object.assign(state.player.board[0], { cardId: 13, attack: 3, hp: 3, maxHp: 3 });
+  const h = harness(state), play = h.qa.act(engine.startCombat); await tick();
+  await untilVisual(h, () => h.qa.shown().combat?.player.some(unit => unit.cardId === 101));
+  const puppet = h.qa.shown().combat.player.find(unit => unit.cardId === 101);
+  h.inspect({ inspectSource: 'combat-player', inspectUid: puppet.uid }, 'focusin');
+  assert.equal(inspection(h).id, 101); assert.equal(inspection(h).attack, puppet.attack); assert.equal(inspection(h).hp, puppet.hp);
+  assert.match(inspection(h).html, /召喚物紀錄/); assert(inspection(h).html.includes(getCharacter(101).description));
+  await h.drain(play);
+});
+
+test('dragging ignores card previews and still performs only the intended purchase or deployment', async () => {
+  for (const kind of ['offer', 'unit']) {
+    const h = harness(), before = copy(h.qa.run()), own = before.player.board[0];
+    h.inspect({ inspectSource: 'owned', inspectUid: own.uid }); const shown = inspection(h);
+    const uid = kind === 'offer' ? before.shop.offers[0].uid : own.uid;
+    const pointer = h.beginDrag(kind, uid, kind === 'offer' ? { buyZone: 'bench' } : { dropZone: 'bench', dropIndex: '0' });
+    const renders = h.renders;
+    h.inspect({ inspectSource: 'shop', inspectOffer: before.shop.offers[1].uid });
+    h.inspect({ inspectSource: 'shop', inspectOffer: before.shop.offers[1].uid }, 'focusin');
+    assert.deepEqual(inspection(h), shown); assert.equal(h.renders, renders); assert.equal(h.saves, 0);
+    pointer.release(); pointer.release(); await h.finishAction();
+    assert.equal(h.saves, 1); assert.equal(h.qa.run().player.bench.length, 1);
+    assert.equal(h.qa.run().player.gold, kind === 'offer' ? 0 : 3);
+    assert.equal(h.qa.run().phase, 'recruit'); assert.equal(h.document.body.children.length, 0); assert.equal(h.timers.size, 0);
+  }
+});
+
+test('touch inspection closes without changing selection and its buy or deploy shortcuts stay atomic', async () => {
+  const h = harness(prepared(), { canHover: false }), offer = h.qa.run().shop.offers[0];
+  h.inspect({ inspectSource: 'shop', inspectOffer: offer.uid }, 'pointerover', 'touch');
+  assert.match(h.inspector.innerHTML, /inspector-empty/);
+  h.inspect({ inspectSource: 'shop', inspectOffer: offer.uid }, 'click', 'touch');
+  assert.equal(h.panel.classList.contains('is-open'), true); assert.equal(h.saves, 0);
+  h.click('inspector-close'); assert.equal(h.panel.classList.contains('is-open'), false); assert.equal(h.saves, 0);
+  h.inspect({ inspectSource: 'shop', inspectOffer: offer.uid }, 'click', 'touch');
+  h.click('inspector-buy'); h.click('inspector-buy'); await h.finishAction();
+  assert.equal(h.saves, 1); assert.equal(h.qa.run().player.gold, 0); assert.equal(h.qa.run().player.bench.length, 1);
+  const unit = h.qa.run().player.bench[0];
+  h.click('inspect', { id: String(unit.cardId), uid: unit.uid, inspectSource: 'owned' });
+  assert.equal(h.panel.classList.contains('is-open'), true);
+  const selected = h.qa.selection(); h.click('inspector-close');
+  assert.equal(h.qa.selection(), selected); assert.equal(h.saves, 1); assert.equal(h.panel.classList.contains('is-open'), false);
+  h.click('inspect', { id: String(unit.cardId), uid: unit.uid, inspectSource: 'owned' });
+  h.click('inspector-deploy'); h.click('inspector-deploy'); await h.finishAction();
+  assert.equal(h.saves, 2); assert.equal(h.qa.run().player.bench.length, 0); assert.equal(h.qa.run().player.board.at(-1).uid, unit.uid);
+  assert.equal(h.panel.classList.contains('is-open'), false); assert.equal(h.qa.run().phase, 'recruit');
+  h.click('lobby'); h.click('continue'); assert.match(h.inspector.innerHTML, /inspector-empty/);
+  h.qa.newRun(); assert.match(h.inspector.innerHTML, /inspector-empty/); assert.equal(h.panel.classList.contains('is-open'), false);
+});
+
+test('a queued modal close cannot steal focus from a newly opened phone inspector or another modal', () => {
+  const h = harness(prepared(), { canHover: false, narrowScreen: true });
+  const origin = h.cardTarget({ inspectSource: 'owned', inspectUid: h.qa.run().player.board[0].uid });
+  function focusable(node) {
+    node.getClientRects = () => [{}]; node.focus = () => { h.document.activeElement = node; };
+    const closest = node.closest;
+    node.closest = selector => selector === '[data-focus]' ? node : closest?.(selector);
+    return node;
+  }
+  focusable(origin);
+  assert.match(h.app.innerHTML, /<button\b[^>]*data-action="inspector-close"/);
+  const close = focusable({ dataset: { action: 'inspector-close' } });
+  const query = h.app.querySelector;
+  h.app.querySelector = selector => selector === '[data-action="inspector-close"]' ? close : query(selector);
+  h.app.querySelectorAll = selector => selector === '[data-focus]' ? [origin] : [];
+  origin.focus(); h.click('team-info'); assert.equal(h.dialog.open, true);
+  h.inspect({ inspectSource: 'opponent', inspectUid: h.qa.run().opponent.board[0].uid }, 'click');
+  assert.equal(h.dialog.open, false); assert.equal(h.document.activeElement, close);
+  h.dialog.dispatch('close'); assert.equal(h.document.activeElement, close, 'old modal close must respect the open inspector');
+  h.click('rules'); assert.equal(h.dialog.open, true);
+  const newModalControl = focusable({ dataset: { action: 'close-dialog' } }); newModalControl.focus();
+  h.dialog.dispatch('close'); assert.equal(h.document.activeElement, newModalControl, 'old close must not steal focus from a later modal');
+  assert.equal(h.saves, 0);
 });

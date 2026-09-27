@@ -3,6 +3,7 @@ import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUni
 import { loadRun, saveRun, clearRun } from './storage.js';
 import { createBattleEffects } from './effects.js';
 import { installThemeBridge } from './theme.js';
+import { CHARACTER_STORIES, CHARACTER_STORY_NOTE } from './character-stories.js';
 
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#game-dialog');
@@ -24,6 +25,10 @@ let openingTimer = null;
 let adventureStarted = loaded.status === 'restored';
 let chestOpening = false;
 let screen = 'opening';
+let inspectorTarget = null;
+let inspectorPinned = false;
+let inspectorOpen = false;
+let inspectorReturnFocus = '';
 let saveMessage = loaded.status === 'restored' ? '已接續本機冒險' : loaded.status === 'empty' ? '進度儲存在此瀏覽器' : loaded.message;
 let saveFailed = ['invalid', 'unavailable'].includes(loaded.status);
 let message = loaded.status === 'restored' ? `已接續第 ${run.round} 輪，歡迎回來。` : loaded.status === 'empty' ? '先招募一位角色，再編排你的主場。' : loaded.message;
@@ -54,8 +59,9 @@ function restoreFocus(key) {
   target?.focus({ preventScroll: true });
 }
 
-function cardView(card, { unit, offer, zone = 'board', compact = false, reward = false } = {}) {
+function cardView(card, { unit, offer, zone = 'board', compact = false, reward = false, source } = {}) {
   const trait = traitFor(card);
+  const inspectSource = source || (unit ? 'owned' : offer ? 'shop' : reward ? 'reward' : 'catalog');
   const ownCount = unitList(shown).filter(item => item.cardId === card.id && !item.golden).length;
   const full = shown.player.bench.length >= CONFIG.benchSize;
   const canBuy = !busy && !shown.pendingReward && shown.player.gold >= CONFIG.buyCost && canReceiveUnit(shown, card.id);
@@ -67,7 +73,7 @@ function cardView(card, { unit, offer, zone = 'board', compact = false, reward =
   const actionLabel = selectable ? '點選或拖曳編排' : offer ? '拖到手牌購買，或點擊查看詳情' : '查看詳情';
   const skill = skillText(card, unit);
   return `<article class="unit-card ${card.kind === 'monster' ? 'monster-card ' : ''}${zone === 'combat' ? 'card-board combat-card' : offer ? 'shop-card' : `card-${zone}`} ${compact && zone !== 'combat' ? 'piece-card' : ''} ${unit?.golden ? 'is-golden' : ''} ${selectedCard ? 'is-selected' : ''}" ${unit ? `data-card-uid="${esc(unit.uid)}"` : ''} ${selectable ? `data-drag-uid="${esc(unit.uid)}"` : offer ? `data-drag-offer="${esc(offer.uid)}"` : ''}>
-    <button class="card-face" type="button" data-action="${action}" data-id="${card.id}" ${unit ? `data-uid="${esc(unit.uid)}"` : ''} data-focus="${unit ? `unit-${esc(unit.uid)}` : `inspect-${esc(offer?.uid || card.id)}`}" ${disabled(selectable && busy)} ${selectable ? `aria-pressed="${Boolean(selectedCard)}"` : ''} aria-label="${esc(`${card.region}，${actionLabel}，${attack}攻擊、${hp}生命。${unit?.golden ? '金卡。' : ''}${skill}`)}">
+    <button class="card-face" type="button" data-inspect-card="${card.id}" data-inspect-source="${inspectSource}" ${unit ? `data-inspect-uid="${esc(unit.uid)}"` : ''} ${offer ? `data-inspect-offer="${esc(offer.uid)}"` : ''} data-action="${action}" data-id="${card.id}" ${unit ? `data-uid="${esc(unit.uid)}"` : ''} data-focus="${unit ? `unit-${esc(unit.uid)}` : `inspect-${esc(offer?.uid || card.id)}`}" ${disabled(selectable && busy)} ${selectable ? `aria-pressed="${Boolean(selectedCard)}"` : ''} aria-label="${esc(`${card.region}，${actionLabel}，${attack}攻擊、${hp}生命。${unit?.golden ? '金卡。' : ''}${skill}`)}">
       <span class="card-heading"><strong>${esc(card.id === 101 ? '戲偶' : card.region)}</strong><span class="tier-mark">${unit?.golden ? '金卡' : `${card.tier}階`}</span></span>
       <span class="portrait"><img src="${imageUrl(card.id)}" width="320" height="480" alt="" loading="lazy" decoding="async" draggable="false" data-art-id="${card.id}"></span>
       ${!compact ? `<span class="card-trait">${esc(trait?.name || '召喚物')}${ownCount && offer ? `<span>已擁有 ${ownCount}/3</span>` : ''}</span><span class="card-skill">${esc(skill)}</span>` : `<span class="combat-badges">${unit?.shield ? `${icon('shield')}護盾` : card.keywords.includes('guard') ? '守護' : unit?.golden ? '金卡' : ''}</span>`}
@@ -96,12 +102,12 @@ function lobbyView() {
   return `<main class="taika-lobby framework-lobby"><div class="lobby-cabinet"><div class="cabinet-corner corner-tl"></div><div class="cabinet-corner corner-tr"></div><div class="cabinet-corner corner-bl"></div><div class="cabinet-corner corner-br"></div><header class="cabinet-title"><span class="lobby-seal" aria-hidden="true">台</span><h1>台灣卡牌<small>台卡</small></h1><span class="cabinet-stamp">島嶼旅店</span></header><div class="cabinet-inset"><p class="cabinet-welcome">${ongoing ? `第 ${run.round} 輪 · ${Math.max(0,run.player.hp)} 生命 · 隊伍 ${getSquadLevel(run.player.xp || 0)} 級` : '招募 24 位地域夥伴，挑戰十輪冒險'}</p><button class="cabinet-mode primary-button" data-action="${ongoing ? 'continue' : 'new-run'}" data-focus="primary"><span class="mode-medal" aria-hidden="true">${icon('sword')}</span><span><strong>${ongoing ? '繼續冒險' : '島嶼冒險'}</strong><small>${ongoing ? '接續這個瀏覽器的進度' : '單機旅店 · 招募與自動對戰'}</small></span>${icon('arrow')}</button><div class="cabinet-tabs"><button class="cabinet-tab" data-action="collection">${icon('star')}<span>角色圖鑑<small>24 位地域夥伴</small></span></button><button class="cabinet-tab" data-action="rules">${icon('info')}<span>旅人指南<small>招募・排陣・開戰</small></span></button></div>${ongoing ? '<button class="lobby-new" data-action="restart">另開一場冒險</button>' : '<p class="cabinet-note">沒有倒數，準備好了再開戰。</p>'}</div><footer class="cabinet-footer"><span>${esc(saveFailed ? saveMessage : '免費單機 · 進度儲存在此瀏覽器')}</span><span aria-hidden="true">✦</span></footer></div><p class="cabinet-caption">打出你的個性，守住你的主場。</p></main>`;
 }
 function collection() {
-  openModal(`<div class="lobby-collection"><span class="overline">24 個地區 · 24 種個性</span><h2 id="dialog-title">找到你的主場夥伴</h2><p>點角色看台詞與技能。角色在旅店招募，圖鑑不代表本局已擁有。</p><div class="collection-roster">${ROSTER.map(card => `<button data-action="inspect" data-id="${card.id}"><img src="${imageUrl(card.id)}" alt="" width="90" height="135" loading="lazy"><strong>${esc(card.region)}</strong><span>${esc(card.job)}</span></button>`).join('')}</div></div>`);
+  openModal(`<div class="lobby-collection"><span class="overline">24 個地區 · 24 種個性</span><h2 id="dialog-title">找到你的主場夥伴</h2><p>點角色看台詞與技能。角色在旅店招募，圖鑑不代表本局已擁有。</p><div class="collection-roster">${ROSTER.map(card => `<button data-action="inspect" data-id="${card.id}" data-inspect-card="${card.id}" data-inspect-source="catalog"><img src="${imageUrl(card.id)}" alt="" width="90" height="135" loading="lazy"><strong>${esc(card.region)}</strong><span>${esc(card.job)}</span></button>`).join('')}</div></div>`);
 }
 function encounterDetails() {
   const offer = getEncounterOffer(run);
   if (!offer) return;
-  openModal(`<div class="encounter-dialog"><span class="overline">第 ${run.round} 輪 · 一次性路邊遭遇</span><h2 id="dialog-title">${esc(offer.name)}</h2><div class="encounter-preview">${offer.board.map(unit => `<div><img src="${imageUrl(unit.cardId)}" width="100" height="150" alt="${esc(getCharacter(unit.cardId).region)}"><strong>${esc(getCharacter(unit.cardId).region)}</strong><span>${unit.attack} 攻／${unit.hp} 血</span></div>`).join('')}</div><p class="encounter-risk"><strong>勝利：＋1 金幣、＋1 經驗</strong><br>敗北：英雄 −2 生命；平手不增減。<br>本輪只挑戰一次，戰後回到同輪旅店。</p><p>隊伍 ${getSquadLevel(run.player.xp || 0)} 級 · ${run.player.xp || 0}／3 經驗。2 經驗升 2 級，最左夥伴本場 +1 生命；3 經驗升 3 級再 +1 攻擊。</p><div class="encounter-actions"><button class="secondary-button" data-action="close-dialog">先準備隊伍</button><button class="primary-button" data-action="start-encounter" ${disabled(!run.player.board.length || Boolean(run.pendingReward))}>準備好了，挑戰 ${icon('arrow')}</button></div></div>`);
+  openModal(`<div class="encounter-dialog"><span class="overline">第 ${run.round} 輪 · 一次性路邊遭遇</span><h2 id="dialog-title">${esc(offer.name)}</h2><div class="encounter-preview">${offer.board.map(unit => `<button class="encounter-inspect" data-action="inspect" data-id="${unit.cardId}" data-uid="${esc(unit.uid)}" data-inspect-card="${unit.cardId}" data-inspect-source="encounter" data-inspect-uid="${esc(unit.uid)}"><img src="${imageUrl(unit.cardId)}" width="100" height="150" alt="${esc(getCharacter(unit.cardId).region)}"><strong>${esc(getCharacter(unit.cardId).region)}</strong><span>${unit.attack} 攻／${unit.hp} 血</span></button>`).join('')}</div><p class="encounter-risk"><strong>勝利：＋1 金幣、＋1 經驗</strong><br>敗北：英雄 −2 生命；平手不增減。<br>本輪只挑戰一次，戰後回到同輪旅店。</p><p>隊伍 ${getSquadLevel(run.player.xp || 0)} 級 · ${run.player.xp || 0}／3 經驗。2 經驗升 2 級，最左夥伴本場 +1 生命；3 經驗升 3 級再 +1 攻擊。</p><div class="encounter-actions"><button class="secondary-button" data-action="close-dialog">先準備隊伍</button><button class="primary-button" data-action="start-encounter" ${disabled(!run.player.board.length || Boolean(run.pendingReward))}>準備好了，挑戰 ${icon('arrow')}</button></div></div>`);
 }
 
 function hud() {
@@ -147,7 +153,7 @@ function teamView() {
 }
 
 function preview() {
-  return `<details class="opponent-preview panel" ${previewOpen ? 'open' : ''}><summary><span>下個對手 <strong>${esc(shown.opponent.name)}</strong></span><span>查看 ${shown.opponent.board.length} 位敵陣 ↓</span></summary><div class="preview-units">${shown.opponent.board.map(unit => `<button data-action="inspect" data-id="${unit.cardId}" data-uid="${esc(unit.uid)}" data-focus="enemy-${esc(unit.uid)}" aria-label="查看敵方${esc(getCharacter(unit.cardId).region)}"><img src="${imageUrl(unit.cardId)}" width="48" height="72" loading="lazy" alt=""><span><strong>${esc(getCharacter(unit.cardId).region)}</strong><small>${unit.attack} 攻／${unit.hp} 血</small></span></button>`).join('')}</div><p>敵陣已公開，可以慢慢想，沒有準備倒數。</p></details>`;
+  return `<details class="opponent-preview panel" ${previewOpen ? 'open' : ''}><summary><span>下個對手 <strong>${esc(shown.opponent.name)}</strong></span><span>查看 ${shown.opponent.board.length} 位敵陣 ↓</span></summary><div class="preview-units">${shown.opponent.board.map(unit => `<button data-action="inspect" data-id="${unit.cardId}" data-uid="${esc(unit.uid)}" data-inspect-card="${unit.cardId}" data-inspect-source="opponent" data-inspect-uid="${esc(unit.uid)}" data-focus="enemy-${esc(unit.uid)}" aria-label="查看敵方${esc(getCharacter(unit.cardId).region)}"><img src="${imageUrl(unit.cardId)}" width="48" height="72" loading="lazy" alt=""><span><strong>${esc(getCharacter(unit.cardId).region)}</strong><small>${unit.attack} 攻／${unit.hp} 血</small></span></button>`).join('')}</div><p>敵陣已公開，可以慢慢想，沒有準備倒數。</p></details>`;
 }
 
 function recruitView() {
@@ -158,7 +164,7 @@ function recruitView() {
 function combatView() {
   const player = shown.combat?.player || shown.player.board;
   const enemy = shown.combat?.enemy || shown.opponent.board;
-  const row = (units, side) => `<div class="${side}-board combat-row" aria-label="${side === 'player' ? '我方' : '敵方'}棋盤">${Array.from({ length: CONFIG.boardSize }, (_, index) => units[index] ? cardView(getCharacter(units[index].cardId), { unit: units[index], zone: 'combat', compact: true }) : '<div class="combat-empty" aria-hidden="true"><span>◇</span></div>').join('')}</div>`;
+  const row = (units, side) => `<div class="${side}-board combat-row" aria-label="${side === 'player' ? '我方' : '敵方'}棋盤">${Array.from({ length: CONFIG.boardSize }, (_, index) => units[index] ? cardView(getCharacter(units[index].cardId), { unit: units[index], zone: 'combat', compact: true, source: `combat-${side}` }) : '<div class="combat-empty" aria-hidden="true"><span>◇</span></div>').join('')}</div>`;
   return `<main class="combat-stage combat-table"><div class="combat-heading" data-hero="enemy"><span class="overline">第 ${shown.round} 輪 · ${shown.combat?.kind === 'encounter' ? '路邊小怪' : '主場競技'}</span><h1>${esc(shown.combat?.opponentName || shown.opponent.name)}</h1></div>${row(enemy, 'enemy')}<div class="versus-line"><span></span><strong>碰撞、出招，守住主場。</strong><span></span></div>${row(player, 'player')}<p class="combat-caption">你的棋盤 · 攻擊、反擊與護盾逐步結算</p></main><footer class="action-dock combat-dock"><div><strong><span class="thinking-dot"></span> 正常速度 · 自動對戰中</strong><small>每次攻擊都會播放完整出手動作</small></div><button class="secondary-button skip-button" data-action="skip" data-focus="primary">略過動畫</button></footer>`;
 }
 
@@ -175,14 +181,17 @@ function resultView() {
 
 function render(preferredFocus = focusKey()) {
   if (screen !== 'run') {
+    resetInspector();
     app.innerHTML = screen === 'opening' ? openingView() : lobbyView();
     if (preferredFocus) restoreFocus(preferredFocus);
     return;
   }
+  const inspectorReading = captureInspectorReading();
   const rails = [...app.querySelectorAll('.card-rail')].map(node => [node.className, node.scrollLeft]);
   const combat = shown.phase === 'combat' || (busy && run.phase !== 'recruit');
   const phase = combat ? 'combat' : shown.phase;
-  app.innerHTML = `<div class="autobattler table-framework ${selectedUid ? 'has-selected' : ''} ${combat ? 'in-combat' : shown.phase === 'recruit' ? 'in-tavern' : ''}">${hud()}<p class="feedback-line">${esc(message)}</p>${combat ? combatView() : shown.phase === 'recruit' ? recruitView() : resultView()}</div>`;
+  app.innerHTML = `<div class="game-with-inspector"><div class="autobattler table-framework ${selectedUid ? 'has-selected' : ''} ${combat ? 'in-combat' : shown.phase === 'recruit' ? 'in-tavern' : ''}">${hud()}<p class="feedback-line">${esc(message)}</p>${combat ? combatView() : shown.phase === 'recruit' ? recruitView() : resultView()}</div>${inspectorView()}</div>`;
+  restoreInspectorReading(inspectorReading);
   for (const [classes, left] of rails) [...app.querySelectorAll('.card-rail')].find(node => node.className === classes)?.scrollTo({ left, behavior: 'instant' });
   if (renderedPhase && renderedPhase !== phase) window.scrollTo({ top: 0, behavior: 'instant' });
   renderedPhase = phase;
@@ -303,14 +312,99 @@ function openModal(content) {
   dialog.innerHTML = `<button class="dialog-close icon-button" data-action="close-dialog" aria-label="關閉對話框">${icon('close')}</button>${content}`;
   if (!dialog.open) dialog.showModal();
 }
-function details(id, uid) {
-  const card = getCharacter(Number(id));
-  if (!card) return;
+function resetInspector() { inspectorTarget = null; inspectorPinned = false; inspectorOpen = false; inspectorReturnFocus = ''; }
+function inspectorDescriptor(id, uid, source, offerUid) {
+  if (!source) {
+    if (shown.combat?.player?.some(unit => String(unit.uid) === String(uid))) source = 'combat-player';
+    else if (shown.combat?.enemy?.some(unit => String(unit.uid) === String(uid))) source = 'combat-enemy';
+    else if (unitList(shown).some(unit => String(unit.uid) === String(uid))) source = 'owned';
+    else if (shown.opponent.board.some(unit => String(unit.uid) === String(uid))) source = 'opponent';
+    else source = 'catalog';
+  }
+  return { cardId: Number(id), uid: uid == null ? null : String(uid), source, offerUid: offerUid == null ? null : String(offerUid), lastUnit: null };
+}
+function inspectorData(target = inspectorTarget) {
+  if (!target) return null;
+  const card = getCharacter(target.cardId);
+  if (!card) return null;
+  const combat = shown.phase === 'combat';
+  if (combat && target.source === 'owned' && shown.combat?.player?.some(unit => String(unit.uid) === target.uid)) target.source = 'combat-player';
+  if (combat && ((target.source === 'opponent' && shown.combat?.kind !== 'encounter') || (target.source === 'encounter' && shown.combat?.kind === 'encounter')) && shown.combat?.enemy?.some(unit => String(unit.uid) === target.uid)) target.source = 'combat-enemy';
+  const lists = { owned: unitList(shown), opponent: shown.opponent.board, 'combat-player': shown.combat?.player || [], 'combat-enemy': shown.combat?.enemy || [], encounter: getEncounterOffer(shown)?.board || [] };
+  const current = lists[target.source]?.find(unit => String(unit.uid) === target.uid && unit.cardId === target.cardId);
+  if (current) target.lastUnit = structuredClone(current);
+  const missing = Boolean(target.uid && !current);
+  const battleSource = target.source.startsWith('combat-');
+  if (battleSource && combat && missing && target.lastUnit) target.lastUnit = { ...target.lastUnit, hp: 0 };
+  const unit = current || target.lastUnit;
+  const offer = target.source === 'shop' ? shown.shop.offers.find(item => String(item.uid) === target.offerUid && item.cardId === target.cardId) : null;
+  let status = target.source === 'shop' ? offer ? '商店 · 普通基礎數值' : '已離開商店 · 基礎數值' : target.source === 'reward' ? '三合一獎勵 · 基礎數值' : target.source === 'catalog' ? '圖鑑 · 普通基礎數值' : target.source === 'encounter' ? '本次小怪的實際數值' : target.source === 'opponent' ? '下一位對手的實際數值' : unit?.golden ? '金卡 · 目前數值' : '角色目前數值';
+  if (battleSource) status = combat ? missing || unit?.hp <= 0 ? '已退場 · 本場最後數值' : '戰鬥中 · 即時數值' : '本場已結束 · 最後戰鬥數值';
+  else if (missing) status = '已離場 · 最後查看數值';
+  const hp = battleSource && combat && missing ? 0 : Math.max(0, unit?.hp ?? card.health);
+  return { card, unit, current, offer, status, hp, attack: unit?.attack ?? card.attack, skill: skillText(card, unit) };
+}
+function inspectorMarkup() {
+  const data = inspectorData();
+  if (!data) return `<div class="inspector-empty"><span class="inspector-island" aria-hidden="true">台</span><h2>每張卡，都有故事。</h2><p>滑過或點選一位角色，<br>看看能力與他的島嶼日常。</p><small>技能、攻擊與生命會隨戰局更新。</small></div>`;
+  const { card, unit, current, offer, status, hp, attack, skill } = data;
   const trait = traitFor(card);
-  const unit = [...(shown.combat?.player || []), ...(shown.combat?.enemy || []), ...unitList(shown), ...shown.opponent.board].find(item => String(item.uid) === String(uid));
-  const skill = skillText(card, unit);
-  const description = card.description.replace(card.shortText, skill);
-  openModal(`<div class="character-detail"><div class="detail-art"><img src="${imageUrl(card.id, true)}" width="1024" height="1536" alt="${esc(card.region)}立體角色" data-art-id="${card.id}"></div><div class="detail-copy"><span class="overline">${card.tier} 階 · ${esc(card.kind === 'monster' ? '路邊小怪' : trait?.name || '戰鬥召喚物')}</span><h2 id="dialog-title">${esc(card.region)}<span>${esc(card.job)}</span></h2><blockquote>「${esc(card.quote)}」</blockquote><div class="detail-stats"><span>${icon('sword')}${unit?.attack ?? card.attack} 攻擊</span><span>${icon('heart')}${Math.max(0, unit?.hp ?? card.health)} 生命</span></div><p class="detail-value-note">${unit ? unit.golden ? '金卡目前數值；以下技能已換算金卡效果。' : '角色目前數值。' : '以下為普通角色的基本數值。'}</p><p>${esc(description)}</p>${trait ? `<div class="trait-explanation"><strong>${esc(trait.name)}羈絆</strong><p>${esc(trait.description)}</p></div>` : ''}</div></div>`);
+  const canRecruit = Boolean(offer && isRecruit() && !shown.pendingReward && shown.player.gold >= CONFIG.buyCost && canReceiveUnit(shown, card.id));
+  const canDeploy = Boolean(current && inspectorTarget.source === 'owned' && shown.player.bench.some(item => item.uid === current.uid) && isRecruit() && shown.player.board.length < CONFIG.boardSize);
+  return `<article class="inspector-card ${unit?.golden ? 'is-golden' : ''} ${card.kind === 'monster' ? 'is-monster' : ''}" data-inspected-card="${card.id}" data-inspected-uid="${esc(inspectorTarget.uid || '')}" data-inspected-source="${esc(inspectorTarget.source)}"><div class="inspector-art"><span class="inspector-tier" aria-label="${card.tier}階">${Array.from({ length: card.tier }, () => icon('star')).join('')}</span><img src="${imageUrl(card.id, true)}" width="1024" height="1536" alt="${esc(card.region + card.job)}立體角色" data-art-id="${card.id}"><div class="inspector-numbers"><span class="inspector-attack"><small>攻擊</small><b>${attack}</b></span><span class="inspector-health"><small>生命</small><b>${hp}</b></span></div></div><header class="inspector-name"><h2>${esc(card.region)}</h2><p>${esc(card.job)}</p></header><div class="inspector-parchment"><p class="inspector-status">${esc(status)}</p><section class="inspector-ability"><h3>角色能力 ${unit?.golden ? '<span>金卡</span>' : ''}</h3><p>${esc(skill)}</p></section><details class="inspector-rules"><summary data-focus="inspector-rules">技能詳解${trait ? '與羈絆' : ''}</summary><p>${esc(card.description.replace(card.shortText, skill))}</p>${trait ? `<strong>${esc(trait.name)}羈絆</strong><p>${esc(trait.description)}</p>` : ''}</details><blockquote>「${esc(card.quote)}」</blockquote><section class="inspector-story"><h3>${CHARACTER_STORIES[card.id] ? '島嶼小傳' : '召喚物紀錄'}</h3><p>${esc(CHARACTER_STORIES[card.id] || card.description)}</p></section><p class="inspector-fiction">${esc(CHARACTER_STORY_NOTE)}</p></div>${offer || canDeploy ? `<footer class="inspector-actions">${offer ? `<button class="primary-button" data-action="inspector-buy" ${disabled(!canRecruit)}>招募 · ${CONFIG.buyCost} 金</button>` : `<button class="primary-button" data-action="inspector-deploy" ${disabled(busy)}>放上棋盤</button>`}<button class="secondary-button" data-action="inspector-close">回棋盤${current ? '選位' : ''}</button></footer>` : ''}</article>`;
+}
+function inspectorView() {
+  return `<aside class="card-inspector ${inspectorOpen ? 'is-open' : ''}" aria-label="角色能力與故事"><header class="inspector-toolbar"><strong>角色手札</strong><button data-action="inspector-pin" data-focus="inspector-pin" aria-pressed="${inspectorPinned}" ${disabled(!inspectorTarget)}>${inspectorPinned ? '解除固定' : '固定這張'}</button><button data-action="inspector-close" data-focus="inspector-close" aria-label="關閉介紹，回到棋盤">回棋盤 ${icon('close')}</button></header><div id="inspector-content" data-inspector-key="${esc(inspectorKey())}">${inspectorMarkup()}</div></aside>`;
+}
+function inspectorKey() {
+  if (!inspectorTarget) return '';
+  const { cardId, uid, source, offerUid } = inspectorTarget;
+  const group = ['owned', 'combat-player'].includes(source) ? 'player' : ['opponent', 'encounter', 'combat-enemy'].includes(source) ? 'enemy' : source;
+  return `${group}:${cardId}:${uid || offerUid || 'base'}`;
+}
+function captureInspectorReading() {
+  const content = app.querySelector('#inspector-content');
+  if (!content) return null;
+  return { key: content.dataset?.inspectorKey, top: content.scrollTop, expanded: Boolean(content.querySelector?.('.inspector-rules')?.open) };
+}
+function restoreInspectorReading(reading) {
+  const content = app.querySelector('#inspector-content');
+  if (!content) return;
+  const same = reading && reading.key === inspectorKey();
+  content.scrollTop = same ? reading.top : 0;
+  const rules = content.querySelector?.('.inspector-rules');
+  if (rules) rules.open = same && reading.expanded;
+}
+function updateInspector() {
+  const panel = app.querySelector('.card-inspector');
+  const content = app.querySelector('#inspector-content');
+  if (!panel || !content) return;
+  const reading = captureInspectorReading();
+  content.innerHTML = inspectorMarkup();
+  content.setAttribute('data-inspector-key', inspectorKey());
+  restoreInspectorReading(reading);
+  panel.classList.toggle('is-open', inspectorOpen);
+  const pin = panel.querySelector('[data-action="inspector-pin"]');
+  if (pin) { pin.textContent = inspectorPinned ? '解除固定' : '固定這張'; pin.disabled = !inspectorTarget; pin.setAttribute('aria-pressed', String(inspectorPinned)); }
+}
+function previewCard(target, pin = false) {
+  if (!getCharacter(target.cardId) || screen !== 'run' || pointerDrag?.started || (!pin && inspectorPinned)) return;
+  if (pin || !inspectorTarget || ['cardId', 'uid', 'source', 'offerUid'].some(key => target[key] !== inspectorTarget[key])) inspectorTarget = target;
+  if (pin) { inspectorReturnFocus = focusKey(); inspectorPinned = true; inspectorOpen = true; }
+  updateInspector();
+  if (pin && window.matchMedia('(max-width: 1099px)').matches) app.querySelector('[data-action="inspector-close"]')?.focus({ preventScroll: true });
+}
+function details(id, uid, source, offerUid) {
+  const target = inspectorDescriptor(id, uid, source, offerUid);
+  const card = getCharacter(target.cardId);
+  if (!card) return;
+  if (screen === 'run') {
+    if (dialog.open) dialog.close();
+    previewCard(target, true);
+    return;
+  }
+  const trait = traitFor(card);
+  openModal(`<div class="character-detail"><div class="detail-art"><img src="${imageUrl(card.id, true)}" width="1024" height="1536" alt="${esc(card.region)}立體角色" data-art-id="${card.id}"></div><div class="detail-copy"><span class="overline">${card.tier} 階 · ${esc(trait?.name || '角色圖鑑')}</span><h2 id="dialog-title">${esc(card.region)}<span>${esc(card.job)}</span></h2><blockquote>「${esc(card.quote)}」</blockquote><div class="detail-stats"><span>${icon('sword')}${card.attack} 攻擊</span><span>${icon('heart')}${card.health} 生命</span></div><p>${esc(card.description)}</p><h3>島嶼小傳</h3><p>${esc(CHARACTER_STORIES[card.id] || card.description)}</p><small>${esc(CHARACTER_STORY_NOTE)}</small></div></div>`);
 }
 function showReward() {
   if (!run.pendingReward) return;
@@ -320,6 +414,7 @@ function rules() {
   openModal(`<div class="rules-copy"><span class="overline">不用趕，沒有準備倒數</span><h2 id="dialog-title">招募、編排，交給夥伴出手。</h2><ol><li><strong>招募你的主場</strong><p>每次購買先進手牌，再親手放上棋盤。買角色 3 金、賣出得 1 金、刷新商店 1 金；凍結免費，下輪保留未買角色並補空位。刷新會解凍。</p></li><li><strong>編排 5 位夥伴</strong><p>5 位上陣、3 位手牌。點一位再點目標席位調整順序；跨區會交換。2／4 位不同同羈絆角色可啟動效果，手牌不計入。</p></li><li><strong>合金與升階</strong><p>同角色 3 張普通卡自動合為金卡，並免費三選一。升階會出現更高階角色；費用可在商店看到，每過一輪會下降。</p></li><li><strong>自動對戰，挑戰 10 輪</strong><p>按「準備好了，開戰」後自動選目標，守護優先，角色交戰同時互相扣血。戰鬥傷勢不帶回招募。生命歸零即結束；第 10 輪必須獲勝且存活才通關。</p></li><li><strong>路邊小怪與隊伍升級</strong><p>第3、6、9輪可選一次小怪挑戰。勝利得1金和1經驗，敗北扣2生命，平手無獎。2經驗升2級，最左位本場+1生命；3經驗升3級再+1攻擊。小怪打完回同輪旅店，不重發收入。直接開主競技戰即略過當輪小怪。</p></li><li><strong>金幣與儲存</strong><p>下一輪才領新收入，剩餘金幣不保留。進度僅存此裝置／瀏覽器；戰鬥中重新整理會顯示已結算結果，不重複扣血或領錢。無法儲存時會明確提醒。</p></li></ol><button class="primary-button" data-action="close-dialog">知道了，回到主場</button></div>`);
 }
 function newRun() {
+  resetInspector();
   adventureStarted = true;
   finishOpening(false);
   screen = 'run';
@@ -353,7 +448,17 @@ document.addEventListener('click', event => {
   if (action === 'lobby') { finishOpening(false); clearDrag(); stopPlayback(); shown = structuredClone(run); screen = 'lobby'; render('primary'); return; }
   if (action === 'collection') { collection(); return; }
   if (action === 'close-dialog') { dialog.close(); return; }
-  if (action === 'inspect') { details(button.dataset.id, button.dataset.uid); return; }
+  if (action === 'inspect') { details(button.dataset.id, button.dataset.uid || button.dataset.inspectUid, button.dataset.inspectSource, button.dataset.inspectOffer); return; }
+  if (action === 'inspector-close') { inspectorOpen = false; inspectorPinned = false; updateInspector(); restoreFocus(inspectorReturnFocus); return; }
+  if (action === 'inspector-pin') { inspectorPinned = !inspectorPinned; updateInspector(); return; }
+  if (action === 'inspector-buy' || action === 'inspector-deploy') {
+    if (busy || !isRecruit()) return;
+    const data = inspectorData();
+    inspectorOpen = false; inspectorPinned = false;
+    if (action === 'inspector-buy' && data?.offer) act(buy, data.offer.uid);
+    else if (action === 'inspector-deploy' && data?.current && inspectorTarget.source === 'owned') { selectedUid = data.current.uid; act(moveUnit, data.current.uid, 'board', shown.player.board.length); }
+    updateInspector(); return;
+  }
   if (action === 'rules') { rules(); return; }
   if (action === 'team-info') { openModal(`<div class="team-notes"><h2 id="dialog-title">主場情報</h2>${synergies()}${preview()}</div>`); return; }
   if (action === 'trait') {
@@ -373,10 +478,10 @@ document.addEventListener('click', event => {
   if (action === 'shop-scroll') { const rail = app.querySelector('.shop-rail'); rail?.scrollBy({ left: Number(button.dataset.direction) * rail.clientWidth * .85, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); return; }
   if (action === 'open-reward') { showReward(); return; }
   if (action === 'reward') { dialog.close(); act(chooseTripleReward, Number(button.dataset.id)); return; }
-  if (action === 'return-tavern') { selectedUid = null; act(resumeRecruitment); return; }
+  if (action === 'return-tavern') { resetInspector(); selectedUid = null; act(resumeRecruitment); return; }
   if (action === 'encounter-info') { encounterDetails(); return; }
   if (action === 'start-encounter') { dialog.close(); act(startEncounter); return; }
-  if (action === 'next') { selectedUid = null; act(nextRound); return; }
+  if (action === 'next') { resetInspector(); selectedUid = null; act(nextRound); return; }
   if (screen !== 'run' || !isRecruit()) return;
   if (run.pendingReward && ['buy', 'refresh', 'freeze', 'upgrade', 'combat'].includes(action)) return;
   if (action === 'buy') { act(buy, run.shop.offers.find(item => String(item.uid) === button.dataset.uid)?.uid); return; }
@@ -388,13 +493,15 @@ document.addEventListener('click', event => {
   if (action === 'select') {
     const unit = unitList(run).find(item => String(item.uid) === button.dataset.uid);
     if (!unit) return;
+    const inspected = inspectorDescriptor(unit.cardId, unit.uid, 'owned');
     if (selectedUid && String(selectedUid) !== String(unit.uid)) {
       const zone = run.player.board.includes(unit) ? 'board' : 'bench';
       act(moveUnit, selected().uid, zone, run.player[zone].indexOf(unit));
     } else { selectedUid = String(selectedUid) === String(unit.uid) ? null : unit.uid; announce(selectedUid ? `已選${getCharacter(unit.cardId).region}，點目標席位調整。` : '已取消選取。'); render(); }
+    previewCard(inspected, true);
     return;
   }
-  if (action === 'place' && selected()) { act(moveUnit, selected().uid, button.dataset.zone, Math.min(Number(button.dataset.index), run.player[button.dataset.zone].length)); return; }
+  if (action === 'place' && selected()) { inspectorOpen = false; act(moveUnit, selected().uid, button.dataset.zone, Math.min(Number(button.dataset.index), run.player[button.dataset.zone].length)); return; }
   if (action === 'shift' && selected()) { const unit = selected(); const zone = shown.player.board.includes(unit) ? 'board' : 'bench'; act(moveUnit, unit.uid, zone, shown.player[zone].indexOf(unit) + Number(button.dataset.direction)); return; }
   if (action === 'transfer' && selected()) { const unit = selected(); const zone = shown.player.board.includes(unit) ? 'bench' : 'board'; act(moveUnit, unit.uid, zone, shown.player[zone].length); return; }
   if (action === 'combat') {
@@ -448,6 +555,8 @@ app.addEventListener('pointermove', event => {
   if (!drag.started && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 8) return;
   if (!drag.started) {
     drag.started = true;
+    inspectorOpen = false;
+    updateInspector();
     app.setPointerCapture?.(event.pointerId);
     const ghost = drag.source.cloneNode(true);
     ghost.classList.add('pointer-card-ghost');
@@ -497,6 +606,17 @@ app.addEventListener('dragstart', event => { if (event.target.closest('.unit-car
 window.addEventListener('blur', cancelPointerDrag);
 document.addEventListener('visibilitychange', () => { if (document.hidden) cancelPointerDrag(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') cancelPointerDrag(); });
+function previewFromEvent(event) {
+  if (screen !== 'run' || pointerDrag || dialog.open || (event.type === 'pointerover' && (event.pointerType === 'touch' || !window.matchMedia('(hover: hover)').matches))) return;
+  const card = event.target.closest?.('[data-inspect-card]');
+  if (!card) return;
+  previewCard(inspectorDescriptor(card.dataset.inspectCard, card.dataset.inspectUid, card.dataset.inspectSource, card.dataset.inspectOffer));
+}
+document.addEventListener('pointerover', previewFromEvent);
+document.addEventListener('focusin', previewFromEvent);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && inspectorOpen && !dialog.open) { inspectorOpen = false; inspectorPinned = false; updateInspector(); restoreFocus(inspectorReturnFocus); }
+});
 document.addEventListener('error', event => {
   const image = event.target;
   if (image.matches?.('img[data-merchant]') && !image.dataset.fallback) { image.dataset.fallback = 'true'; image.src = imageUrl(14, true); return; }
@@ -507,7 +627,11 @@ document.addEventListener('error', event => {
 document.addEventListener('scroll', event => { if (event.target.matches?.('.shop-rail')) updateShopControls(); }, true);
 window.addEventListener('resize', () => { cancelPointerDrag(); updateShopControls(); });
 document.addEventListener('toggle', event => { if (event.target.matches?.('.opponent-preview')) previewOpen = event.target.open; }, true);
-dialog.addEventListener('close', () => { restoreFocus(returnFocus); });
+dialog.addEventListener('close', () => {
+  if (dialog.open) return;
+  if (screen === 'run' && inspectorOpen && window.matchMedia('(max-width: 1099px)').matches) app.querySelector('[data-action="inspector-close"]')?.focus({ preventScroll: true });
+  else restoreFocus(returnFocus);
+});
 render('primary');
 installThemeBridge();
 if (screen === 'run' && run.pendingReward) showReward();
