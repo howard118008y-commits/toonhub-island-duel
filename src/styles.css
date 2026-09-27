@@ -51,9 +51,11 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--theme-ink,#173c31);
 .game-dialog{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;overflow:hidden;background:var(--theme-bg);color:var(--theme-ink)}
 .game-dialog::backdrop,.collection-dialog::backdrop{background:#102820b8}
 .game-shell{display:flex;flex-direction:column;width:100%;height:100%}
-.game-topbar{display:flex;justify-content:space-between;align-items:center;flex:0 0 56px;gap:12px;padding:6px 20px;background:var(--theme-panel);color:var(--theme-ink);border-bottom:1px solid #203c3226}
-.game-topbar h2{display:inline;margin:0;font-size:16px;font-weight:850;white-space:nowrap}
-.game-topbar span{margin-left:16px;font-size:13px}
+.game-topbar{display:flex;justify-content:space-between;align-items:center;flex:0 0 44px;gap:12px;padding:0 18px;background:linear-gradient(180deg,#332d24,#211f1a);color:#f2ddb1;box-shadow:inset 0 -1px #b28b5159}
+.game-topbar h2{margin:0;font-family:serif;font-size:16px;font-weight:850;letter-spacing:.16em;white-space:nowrap}
+.game-topbar .return-home{min-height:44px;border:0;border-radius:0;padding:0 4px;background:transparent;color:#ead5ae;font-size:12px;box-shadow:none}
+.game-topbar .return-home:hover{color:#fff3d5;background:#ffffff09}
+.game-topbar .return-home:focus-visible{outline-color:#f3d79c;outline-offset:-3px}
 .return-home,.icon-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:44px;min-height:44px;border:1px solid #203c3266;border-radius:10px;background:#ffffff60;color:inherit;padding:9px 12px;font-size:14px;font-weight:650;white-space:nowrap}
 .return-home:hover,.icon-button:hover{background:#fff}
 .game-frame{flex:1 1 0;width:100%;min-height:0;border:0;background:var(--theme-bg)}
@@ -97,7 +99,6 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--theme-ink,#173c31);
   .discover-arrow{width:27px;height:27px}
   .game-topbar{flex-basis:44px;padding:0 10px;gap:8px}
   .game-topbar h2{display:block;font-size:14px}
-  .game-topbar span{display:none}
   .return-home{font-size:13px;padding:6px 10px}
   .collection-dialog{width:calc(100% - 20px);max-height:92dvh;border-radius:16px}
   .collection-header{padding:16px;gap:10px}.collection-header h2{font-size:23px}.collection-header p{font-size:13px}

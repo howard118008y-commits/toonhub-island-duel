@@ -19,11 +19,11 @@ function prepared() {
   state.opponent.board = [unit(4, 7)];
   return state;
 }
-function harness(state = prepared()) {
+function harness(state = prepared(), { enterRun = true, reducedMotion = false } = {}) {
   const data = new Map(), pending = [], calls = [], timers = new Map(), warnings = [];
-  let saves = 0, timerId = 0, qa;
+  let saves = 0, timerId = 0, now = 10_000, qa;
   const store = { getItem: key => data.get(key) ?? null, setItem(key, value) { saves++; data.set(key, value); }, removeItem: key => data.delete(key) };
-  saveRun(state, store); saves = 0;
+  if (state) saveRun(state, store); saves = 0;
   function eventTarget() {
     const listeners = new Map();
     return {
@@ -40,25 +40,25 @@ function harness(state = prepared()) {
   }; }
   const app = element(), dialog = element(), live = element();
   const document = { ...eventTarget(), body: element(), hidden: false, activeElement: null, querySelector: selector => selector === '#app' ? app : selector === '#game-dialog' ? dialog : live };
-  const window = { ...eventTarget(), scrollTo() {}, matchMedia: () => ({ matches: false }) };
+  const window = { ...eventTarget(), scrollTo() {}, matchMedia: () => ({ matches: reducedMotion }) };
   const fx = {
     capture: () => ({}), sync() {},
     cancel() { while (pending.length) pending.shift()(); },
     play(step) { calls.push({ step, shown: copy(qa.shown()) }); return new Promise(resolve => pending.push(resolve)); },
   };
-  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, getCharacter, structuredClone, URL, AbortController, document, window,
+  class ClockDate extends Date { static now() { return now; } }
+  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, getCharacter, structuredClone, URL, AbortController, document, window, Date: ClockDate,
     console: { warn: (...args) => warnings.push(args), error: (...args) => warnings.push(args) },
-    setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id),
-    requestAnimationFrame(fn) { const id = ++timerId; timers.set(id, { fn, delay: 16 }); return id; }, cancelAnimationFrame: id => timers.delete(id),
+    setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay, at: now + delay }); return id; }, clearTimeout: id => timers.delete(id),
+    requestAnimationFrame(fn) { const id = ++timerId; timers.set(id, { fn, delay: 16, at: now + 16 }); return id; }, cancelAnimationFrame: id => timers.delete(id),
     createBattleEffects: () => fx, loadRun: () => loadRun(store), saveRun: state => saveRun(state, store), clearRun: () => clearRun(store), installThemeBridge() {},
   });
-  vm.runInContext(source + '\nglobalThis.__qa = { act, newRun, run: () => run, shown: () => shown, busy: () => busy };', context, { filename: 'autobattler-app.js' });
+  vm.runInContext(source + '\nglobalThis.__qa = { act, newRun, run: () => run, shown: () => shown, busy: () => busy, screen: () => screen };', context, { filename: 'autobattler-app.js' });
   qa = context.__qa;
   const click = (action, extra = {}) => document.dispatch('click', { preventDefault() {}, target: { closest: () => ({ disabled: false, dataset: { action, ...extra } }) } });
   // Stored adventures now enter through the real lobby action. Preserve every
   // combat recovery assertion instead of bypassing the new presentation flow.
-  click('enter-lobby');
-  click('continue');
+  if (enterRun) { click('enter-lobby'); click('continue'); }
   const visibilityBaseline = document.count('visibilitychange');
   const visible = value => { document.hidden = !value; document.dispatch('visibilitychange'); };
   async function drain(promise) {
@@ -72,17 +72,32 @@ function harness(state = prepared()) {
     await tick(); assert(done, 'cancelled/failed playback must settle'); await promise;
   }
   async function finishAction() { for (let index = 0; index < 600 && qa.busy(); index++) { pending.shift()?.(); await tick(); } assert.equal(qa.busy(), false); }
-  function drag(kind, uid, destination, cancel = false) {
+  async function advance(ms) {
+    const until = now + ms;
+    for (let count = 0; count < 1000; count++) {
+      const next = [...timers].filter(([, timer]) => timer.at <= until).sort((a, b) => a[1].at - b[1].at)[0];
+      if (!next) { now = until; return; }
+      const [id, timer] = next; timers.delete(id); now = timer.at; timer.fn(); await tick();
+    }
+    assert.fail('timer queue did not settle');
+  }
+  function beginDrag(kind, uid, destination) {
     const source = element(); source.dataset[kind === 'offer' ? 'dragOffer' : 'dragUid'] = uid;
     const face = { disabled: false, closest: () => source };
     const target = destination ? { dataset: destination, classList: { add() {} } } : null;
-    document.elementFromPoint = () => target && { closest: () => target };
+    document.elementFromPoint = () => target && { closest: selector => {
+      const key = { '[data-buy-zone]': 'buyZone', '[data-sell-zone]': 'sellZone', '[data-drop-zone]': 'dropZone' }[selector];
+      return key && Object.hasOwn(target.dataset, key) ? target : null;
+    } };
     const event = { pointerId: 1, isPrimary: true, button: 0, clientX: 10, clientY: 10, preventDefault() {}, target: { closest: () => face } };
     app.dispatch('pointerdown', event); app.dispatch('pointermove', { ...event, clientX: 30, clientY: 60 });
-    app.dispatch(cancel ? 'pointercancel' : 'pointerup', { ...event, clientX: 30, clientY: 60 });
-    app.dispatch('pointerup', { ...event, clientX: 30, clientY: 60 }); // A duplicated release cannot purchase twice.
+    return { release: (cancel = false) => app.dispatch(cancel ? 'pointercancel' : 'pointerup', { ...event, clientX: 30, clientY: 60 }) };
   }
-  return { qa, fx, calls, pending, timers, warnings, document, app, live, click, visible, drain, settled, finishAction, drag, store, visibilityBaseline, get saves() { return saves; } };
+  function drag(kind, uid, destination, cancel = false) {
+    const pointer = beginDrag(kind, uid, destination);
+    pointer.release(cancel); pointer.release(); // A duplicated release cannot purchase twice.
+  }
+  return { qa, fx, calls, pending, timers, warnings, document, window, app, live, click, visible, drain, settled, finishAction, advance, beginDrag, drag, store, visibilityBaseline, get saves() { return saves; } };
 }
 
 test('animation rejection or missing capture recovers to the saved result without rerunning combat', async () => {
@@ -256,4 +271,126 @@ test('an empty first-round adventure continues from the lobby without resetting 
   h.click('lobby'); assert.match(h.app.innerHTML, /data-action="continue"/);
   h.click('continue'); assert.deepEqual(h.qa.run(), before); assert.deepEqual(loadRun(h.store).state, before);
   assert.equal(h.saves, saves); assert.equal(h.timers.size, 0);
+});
+
+test('new and saved adventures wait for a deliberate chest click, then open exactly once', async () => {
+  for (const state of [null, prepared()]) {
+    const h = harness(state, { enterRun: false }), before = copy(h.qa.run());
+    assert.equal(h.qa.screen(), 'opening'); assert.equal(h.timers.size, 0);
+    const trigger = h.app.innerHTML.match(/<button\b[^>]*data-action="open-chest"[^>]*>/)?.[0];
+    assert(trigger, 'the chest remains a native keyboard-operable button'); assert.match(trigger, /\btype="button"/);
+    if (!state) { assert.equal(loadRun(h.store).status, 'empty'); assert.doesNotMatch(h.app.innerHTML, /data-action="continue"/); }
+    await h.advance(60_000);
+    assert.equal(h.qa.screen(), 'opening'); assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, 0);
+    h.click('open-chest');
+    const opening = [...h.timers];
+    assert.equal(opening.length, 1); assert.equal(opening[0][1].delay, 1050);
+    await h.advance(500); h.click('open-chest');
+    assert.deepEqual([...h.timers], opening, 'a second click must not restart the opening delay');
+    await h.advance(549); assert.equal(h.qa.screen(), 'opening');
+    await h.advance(1); assert.equal(h.qa.screen(), 'lobby'); assert.equal(h.timers.size, 0);
+    h.click('open-chest'); await h.advance(10_000);
+    assert.equal(h.qa.screen(), 'lobby'); assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, 0);
+    if (!state) {
+      assert.doesNotMatch(h.app.innerHTML, /data-action="continue"/); assert.equal(loadRun(h.store).status, 'empty');
+      h.click('new-run'); assert.equal(h.qa.screen(), 'run'); assert.equal(h.saves, 1);
+      assert.equal(loadRun(h.store).status, 'restored'); assert.deepEqual(loadRun(h.store).state, h.qa.run());
+    }
+  }
+});
+
+test('skip and direct continuation cancel chest timers, including a callback already dequeued', async () => {
+  const untouched = harness(null, { enterRun: false });
+  untouched.click('enter-lobby'); assert.equal(untouched.qa.screen(), 'lobby'); assert.equal(untouched.timers.size, 0);
+  for (const route of ['skip', 'continue', 'new-run']) {
+    const h = harness(prepared(), { enterRun: false }); h.click('open-chest');
+    const lateCallback = [...h.timers.values()][0].fn;
+    if (route === 'skip') { h.click('enter-lobby'); assert.equal(h.qa.screen(), 'lobby'); h.click('continue'); }
+    else if (route === 'continue') h.click('continue');
+    else h.qa.newRun();
+    const before = copy(h.qa.run()), saves = h.saves;
+    assert.equal(h.qa.screen(), 'run'); assert.equal(h.timers.size, 0);
+    lateCallback(); await h.advance(5000);
+    assert.equal(h.qa.screen(), 'run'); assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, saves);
+    h.click('lobby'); h.click('continue'); await h.advance(5000);
+    assert.equal(h.qa.screen(), 'run'); assert.deepEqual(h.qa.run(), before); assert.equal(h.timers.size, 0);
+  }
+});
+
+test('reduced motion still waits for a player action and enters the lobby without an animation timer', async () => {
+  for (const action of ['open-chest', 'enter-lobby']) {
+    const h = harness(prepared(), { enterRun: false, reducedMotion: true }), before = copy(h.qa.run());
+    await h.advance(60_000); assert.equal(h.qa.screen(), 'opening'); assert.equal(h.timers.size, 0);
+    h.click(action); assert.equal(h.qa.screen(), 'lobby'); assert.equal(h.timers.size, 0);
+    assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, 0);
+  }
+});
+
+test('dragging a shop card to the hand and then onto the board requires two actions and never starts combat', async () => {
+  const state = engine.createRun({ seed: 771 }), h = harness(state), offer = h.qa.run().shop.offers[0];
+  h.drag('offer', offer.uid, { dropZone: 'board', dropIndex: '0' }); await h.finishAction();
+  assert.equal(h.qa.run().player.gold, 3); assert.equal(h.qa.run().player.board.length, 0); assert.equal(h.saves, 0);
+  h.drag('offer', offer.uid, { buyZone: 'bench' }); await h.finishAction();
+  const bought = h.qa.run().player.bench[0];
+  assert.equal(h.qa.run().player.gold, 0); assert.equal(h.qa.run().player.board.length, 0); assert.equal(bought.cardId, offer.cardId);
+  h.drag('unit', bought.uid, { dropZone: 'board', dropIndex: '0' }); await h.finishAction();
+  assert.equal(h.qa.run().player.bench.length, 0); assert.equal(h.qa.run().player.board[0].uid, bought.uid);
+  assert.equal(h.qa.run().phase, 'recruit'); assert.equal(h.qa.run().combat, null);
+  assert.equal(h.calls.some(({ step }) => ['attack', 'damage'].includes(step.type)), false);
+  assert.equal(h.saves, 2); assert.equal(h.document.body.children.length, 0); assert.equal(h.timers.size, 0);
+});
+
+test('merchant drops sell owned cards exactly once and reject shop cards or cancelled sales', async () => {
+  for (const zone of ['board', 'bench']) for (const mode of ['sale', 'cancel', 'offer']) {
+    const state = prepared();
+    if (zone === 'bench') { state.player.bench = state.player.board; state.player.board = []; }
+    const h = harness(state), before = copy(h.qa.run());
+    // Read the real rendered attribute: a fabricated nonempty stub would hide a bare-attribute bug.
+    const merchantTag = h.app.innerHTML.match(/<[^>]*\bdata-sell-zone(?:\s|=|>)[^>]*>/)?.[0];
+    assert(merchantTag, 'the rendered merchant must expose a sale drop target');
+    const merchantValue = merchantTag.match(/\bdata-sell-zone="([^"]*)"/)?.[1];
+    assert(merchantValue, 'the handler requires an explicit nonempty sale target value');
+    const uid = mode === 'offer' ? before.shop.offers[0].uid : before.player[zone][0].uid;
+    h.drag(mode === 'offer' ? 'offer' : 'unit', uid, { sellZone: merchantValue }, mode === 'cancel'); await h.finishAction();
+    if (mode === 'sale') {
+      assert.equal(h.qa.run().player.gold, before.player.gold + 1); assert.equal(h.qa.run().player[zone].length, 0); assert.equal(h.saves, 1);
+      assert.deepEqual(loadRun(h.store).state, h.qa.run());
+    } else { assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, 0); }
+    assert.equal(h.document.body.children.length, 0); assert.equal(h.timers.size, 0);
+  }
+});
+
+test('cancelled drags and lobby transitions ignore late pointer frames and releases', async () => {
+  for (const kind of ['offer', 'unit']) for (const route of ['cancel', 'escape', 'blur', 'resize', 'hidden', 'lobby']) {
+    const h = harness(), before = copy(h.qa.run());
+    const uid = kind === 'offer' ? before.shop.offers[0].uid : before.player.board[0].uid;
+    const destination = kind === 'offer' ? { buyZone: 'bench' } : { dropZone: 'bench', dropIndex: '0' };
+    const pointer = h.beginDrag(kind, uid, destination);
+    const frame = [...h.timers.values()].find(timer => timer.delay === 16)?.fn;
+    assert(frame); assert.equal(h.document.body.children.length, 1);
+    if (route === 'cancel') pointer.release(true);
+    else if (route === 'escape') h.document.dispatch('keydown', { key: 'Escape' });
+    else if (route === 'blur') h.window.dispatch('blur');
+    else if (route === 'resize') h.window.dispatch('resize');
+    else if (route === 'hidden') h.visible(false);
+    else h.click('lobby');
+    assert.equal(h.document.body.children.length, 0); assert.equal(h.timers.size, 0);
+    await h.advance(401);
+    if (route === 'lobby') { assert.equal(h.qa.screen(), 'lobby'); h.click('continue'); }
+    if (route === 'hidden') h.visible(true);
+    frame(); pointer.release(); await h.finishAction();
+    assert.equal(h.qa.screen(), 'run'); assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, 0);
+    assert.equal(h.document.body.children.length, 0); assert.equal(h.timers.size, 0);
+  }
+});
+
+test('returning to the lobby during combat keeps its single saved result and ignores the old playback', async () => {
+  const h = harness(), playback = h.qa.act(engine.startCombat); await tick();
+  assert.equal(h.qa.busy(), true); assert.equal(h.qa.run().phase, 'result');
+  const result = copy(h.qa.run()), saves = h.saves;
+  h.click('lobby'); assert.equal(h.qa.screen(), 'lobby'); await h.settled(playback);
+  h.click('continue'); await h.advance(6000);
+  assert.equal(h.qa.screen(), 'run'); assert.deepEqual(h.qa.run(), result); assert.deepEqual(h.qa.shown(), result);
+  assert.deepEqual(loadRun(h.store).state, result); assert.equal(h.saves, saves); assert.equal(h.qa.busy(), false);
+  assert.equal(h.timers.size, 0); assert.equal(h.document.count('visibilitychange'), h.visibilityBaseline);
 });

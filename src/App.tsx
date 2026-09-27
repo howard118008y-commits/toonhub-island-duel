@@ -154,7 +154,7 @@ export default function App() {
           <button className="collection-trigger" type="button" onClick={() => collectionDialog.current?.showModal()}><Grid2X2 size={18} aria-hidden="true" />角色圖鑑</button>
         </header>
 
-        <div className="game-pitch"><h1>開箱，召集你的臺灣隊。</h1><p>24 位角色・10 輪主戰・3 場支線遭遇</p></div>
+        <div className="game-pitch"><h1>打開木盒，召集你的臺灣隊。</h1><p>24 位角色・10 輪主戰・3 場支線遭遇</p></div>
 
         <div className="carousel absolute inset-0" aria-roledescription="角色輪播" aria-label="二十四位臺灣地域角色，同框四位">
           {CHARACTERS.map((character, index) => {
@@ -185,7 +185,7 @@ export default function App() {
           </div>
         </section>
 
-        <a className="discover-link" href="#play" onClick={event => { event.preventDefault(); openGame(); }} aria-label="進入台卡，開啟台灣卡牌單機冒險"><span><small>免下載・免登入</small>進入台卡</span><ArrowUpRight className="discover-arrow" strokeWidth={1.8} aria-hidden="true" /></a>
+        <a className="discover-link" href="#play" onClick={event => { event.preventDefault(); openGame(); }} aria-label="進入台卡，開啟台灣卡牌遊戲大廳"><span><small>打開木盒・進入旅店</small>進入台卡</span><ArrowUpRight className="discover-arrow" strokeWidth={1.8} aria-hidden="true" /></a>
         <span className="sr-only" role="status" aria-live="polite">第 {activeIndex + 1} 位，共 24 位。{activeCharacter.region}，{activeCharacter.job}。{activeCharacter.quote}</span>
       </main>
 
@@ -211,7 +211,7 @@ export default function App() {
 
       <dialog ref={gameDialog} className="game-dialog" aria-labelledby="game-title">
         <div className="game-shell">
-          <header className="game-topbar"><div><h2 id="game-title">台卡</h2><span>台灣卡牌・單機冒險</span></div><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回首頁</button></header>
+          <header className="game-topbar"><h2 id="game-title" aria-label="台灣卡牌">台卡</h2><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回網站</button></header>
           {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}${import.meta.env.VITE_GAME_ENTRY}`} title={`${BRAND_NAME}｜單機冒險`} onLoad={() => sendTheme(activeCharacter)} />}
         </div>
       </dialog>
