@@ -1,5 +1,15 @@
 import { getEncounterCard } from './encounters.js';
 
+export const EVOLUTIONS = [
+  { level: 0, name: '普通', key: 'normal', multiplier: 1 },
+  { level: 1, name: '金卡', key: 'gold', multiplier: 2 },
+  { level: 2, name: '紫卡', key: 'epic', multiplier: 3 },
+  { level: 3, name: '傳說', key: 'legendary', multiplier: 4 },
+];
+// Missing evolution is the original save format: golden cards are level 1.
+export const getEvolution = unit => unit?.evolution ?? (unit?.golden ? 1 : 0);
+export const getEvolutionMultiplier = unit => EVOLUTIONS[getEvolution(unit)].multiplier;
+
 // All tuning lives here; identities and portraits keep the original 24 characters.
 export const CONFIG = {
   version: 2, rounds: 10, heroHealth: 24, boardSize: 5, benchSize: 3,
@@ -69,7 +79,7 @@ const targetNotes = {
 };
 export const ROSTER = definitions.map(([id,region,job,quote,zone,faction,tier,attack,health,keywords,ability,shortText]) => ({
   id,region,job,quote,zone,faction,tier,attack,health,keywords,ability,shortText,artId:id,
-  description: `${shortText}。${targetNotes[ability] || ''}所有增益與治療只作用於本場戰鬥；已退場角色不會復活。${keywords.includes('guard') && ability !== 'none' ? '守護：敵人必須優先攻擊我。' : ''}金卡基礎攻擊與生命加倍，技能數值加倍；護盾與連擊次數不疊加。`,
+  description: `${shortText}。${targetNotes[ability] || ''}所有增益與治療只作用於本場戰鬥；已退場角色不會復活。${keywords.includes('guard') && ability !== 'none' ? '守護：敵人必須優先攻擊我。' : ''}同名普通三合一升金；金卡、紫卡各再吸收一張同名普通卡，升為紫卡、傳說。普通／金／紫／傳說的基礎攻血與技能數值為1／2／3／4倍；護盾與連擊次數不增加。`,
 }));
 const TOKEN = { id:101,region:'雲林',job:'掌中戲偶',quote:'田裡有糧，掌上有戲。',zone:'中部',faction:null,tier:1,attack:2,health:2,keywords:[],ability:'none',shortText:'戰鬥限定召喚物',description:'只存在於本場戰鬥，不計羈絆、不進入備位、不參與合成。',artId:101 };
 export const getCharacter = id => id === 101 ? TOKEN : ROSTER.find(card => card.id === id) || getEncounterCard(id);

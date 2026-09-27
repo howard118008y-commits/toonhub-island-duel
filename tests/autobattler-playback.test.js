@@ -3,7 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import * as engine from '../public/game/src/autobattler.js';
-import { CONFIG, ROSTER, TRAITS, getCharacter } from '../public/game/src/roster.js';
+import { CONFIG, ROSTER, TRAITS, EVOLUTIONS, getCharacter, getEvolution, getEvolutionMultiplier } from '../public/game/src/roster.js';
 import { loadRun, saveRun, clearRun } from '../public/game/src/storage.js';
 import { CHARACTER_STORIES, CHARACTER_STORY_NOTE } from '../public/game/src/character-stories.js';
 import { getGuideAdvice, GUIDE_ADVICE_NOTE } from '../public/game/src/guide-advisor.js';
@@ -83,10 +83,14 @@ function harness(state = prepared(), { enterRun = true, reducedMotion = false, c
   }
   function descendants(root) { return root.children.flatMap(node => [node, ...descendants(node)]); }
   const app = element(), dialog = element(), live = element(), inspector = element(), panel = element(), pin = element();
+  let inspectorHTML = '', inspectorRules = element(); inspector.scrollTop = 0;
+  Object.defineProperty(inspector, 'innerHTML', { get: () => inspectorHTML, set(value) { inspectorHTML = value; inspector.scrollTop = 0; inspectorRules = element(); } });
+  inspector.querySelector = selector => selector === '.inspector-rules' && inspectorHTML.includes('inspector-rules') ? inspectorRules : null;
   let appHTML = '', renders = 0, markup = { children: [] };
   Object.defineProperty(app, 'innerHTML', { get: () => appHTML, set(value) {
     appHTML = value; renders++; markup = markupDOM(value);
     inspector.innerHTML = value.match(/<div id="inspector-content"[^>]*>([\s\S]*)<\/div><\/aside>/)?.[1] || '';
+    inspector.dataset.inspectorKey = value.match(/id="inspector-content"[^>]*data-inspector-key="([^"]*)"/)?.[1];
     panel.classList.toggle('is-open', /<aside class="card-inspector[^\"]*\bis-open/.test(value));
   } });
   const guideNodes = selector => descendants(markup).filter(node => node.matches(selector));
@@ -101,7 +105,7 @@ function harness(state = prepared(), { enterRun = true, reducedMotion = false, c
     play(step) { calls.push({ step, shown: copy(qa.shown()) }); return new Promise(resolve => pending.push(resolve)); },
   };
   class ClockDate extends Date { static now() { return now; } }
-  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, getCharacter, CHARACTER_STORIES, CHARACTER_STORY_NOTE, getGuideAdvice, GUIDE_ADVICE_NOTE, structuredClone, URL, AbortController, document, window, localStorage: preferences, Date: ClockDate,
+  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, EVOLUTIONS, getCharacter, getEvolution, getEvolutionMultiplier, CHARACTER_STORIES, CHARACTER_STORY_NOTE, getGuideAdvice, GUIDE_ADVICE_NOTE, structuredClone, URL, AbortController, document, window, localStorage: preferences, Date: ClockDate,
     console: { warn: (...args) => warnings.push(args), error: (...args) => warnings.push(args) },
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay, at: now + delay }); return id; }, clearTimeout: id => timers.delete(id),
     requestAnimationFrame(fn) { const id = ++timerId; timers.set(id, { fn, delay: 16, at: now + 16 }); return id; }, cancelAnimationFrame: id => timers.delete(id),
@@ -469,6 +473,7 @@ function inspection(h) {
   return {
     html, id: Number(html.match(/data-inspected-card="(\d+)"/)?.[1]),
     uid: html.match(/data-inspected-uid="([^"]*)"/)?.[1], source: html.match(/data-inspected-source="([^"]*)"/)?.[1],
+    evolution: Number(html.match(/data-inspected-evolution="(\d+)"/)?.[1]),
     status: html.match(/class="inspector-status">([^<]*)<\/p>/)?.[1],
     attack: Number(html.match(/class="inspector-attack">[\s\S]*?<b>(\d+)<\/b>/)?.[1]),
     hp: Number(html.match(/class="inspector-health">[\s\S]*?<b>(\d+)<\/b>/)?.[1]),
@@ -828,4 +833,107 @@ test('a stranded empty team is directed to the real lobby button without receivi
   const h = harness(state, { guidePreference: null }), before = copy(h.qa.run());
   await h.advance(5000); guideTarget(h, 'lobby');
   assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, 0); assert.equal(h.qa.busy(), false);
+});
+
+function evolutionRun(rank = 1) {
+  const state = engine.createRun(1210), card = getCharacter(3);
+  const unit = { uid: `u-${state.nextUid++}`, cardId: card.id, golden: rank > 0, evolution: rank, attack: card.attack * (rank + 1), hp: card.health * (rank + 1), maxHp: card.health * (rank + 1), shield: 0 };
+  state.player.board = [unit]; state.player.gold = 12;
+  state.shop.offers = Array.from({ length: 3 }, () => ({ uid: `u-${state.nextUid++}`, cardId: card.id }));
+  return state;
+}
+function renderedCardLabel(h, uid) {
+  const tag = [...h.app.innerHTML.matchAll(/<button\b[^>]*>/g)].find(([tag]) => tag.includes(`data-inspect-uid="${uid}"`))?.[0];
+  assert(tag, 'card still exists in the rendered board'); return tag.match(/aria-label="([^"]*)"/)?.[1] || '';
+}
+
+test('pinned gold stories follow the same UID through epic and legendary purchases without advertising or awarding another reward', async () => {
+  const h = harness(evolutionRun()), uid = h.qa.run().player.board[0].uid, card = getCharacter(3);
+  h.inspect({ inspectSource: 'owned', inspectUid: uid }, 'click');
+  assert.equal(inspection(h).evolution, 1); assert(inspection(h).html.includes(CHARACTER_STORIES[3]));
+  for (const rank of [2, 3]) {
+    const before = copy(h.qa.run()), offerUid = before.shop.offers[0].uid;
+    h.drag('offer', offerUid, { buyZone: 'bench' });
+    assert.equal(h.qa.run().player.gold, before.player.gold - 3); assert.equal(h.qa.run().player.board[0].uid, uid);
+    assert.equal(h.qa.run().pendingReward, null); await h.finishAction();
+    assert.equal(inspection(h).uid, uid); assert.equal(inspection(h).evolution, rank);
+    assert.equal(inspection(h).attack, card.attack * (rank + 1)); assert.equal(inspection(h).hp, card.health * (rank + 1));
+    assert(inspection(h).html.includes(CHARACTER_STORIES[3])); assert.equal(h.dialog.open, false);
+    assert.match(renderedCardLabel(h, uid), new RegExp(EVOLUTIONS[rank].name));
+    assert.match(renderedCardLabel(h, uid), new RegExp(`${card.attack * (rank + 1)}攻擊`));
+    const saved = loadRun(h.store).state; assert.equal(saved.player.board[0].evolution, rank); assert.equal(saved.pendingReward, null);
+    const event = h.calls.findLast(call => call.step.type === 'triple').step;
+    assert.equal(event.evolution.from, rank - 1); assert.equal(event.evolution.to, rank);
+  }
+  assert.match(inspection(h).html, /最高品質/);
+  const legendary = copy(h.qa.run().player.board[0]), next = h.qa.run().shop.offers[0].uid;
+  h.drag('offer', next, { buyZone: 'bench' }); await h.finishAction();
+  assert.deepEqual(h.qa.run().player.board[0], legendary); assert.equal(h.qa.run().player.bench.length, 1);
+  assert.equal(getEvolution(h.qa.run().player.bench[0]), 0); assert.equal(h.qa.run().pendingReward, null);
+});
+
+test('old saved golden cards show their original rank and can evolve through a legal highlighted purchase at full capacity', async () => {
+  const state = evolutionRun(), anchor = state.player.board[0]; delete anchor.evolution;
+  const make = cardId => { const card = getCharacter(cardId); return { uid: `u-${state.nextUid++}`, cardId, golden: false, attack: card.attack, hp: card.health, maxHp: card.health, shield: 0 }; };
+  state.player.board.push(...[4, 5, 6, 7].map(make)); state.player.bench = [8, 9, 10].map(make);
+  // Already strong permanent bonuses isolate full-capacity evolution from the
+  // advisor's legitimate higher-priority suggestion to deploy stronger hand cards.
+  state.player.board.forEach(unit => { unit.attack += 30; unit.hp += 30; unit.maxHp += 30; });
+  const h = harness(state, { guidePreference: null });
+  h.inspect({ inspectSource: 'owned', inspectUid: anchor.uid }, 'click');
+  assert.equal(inspection(h).evolution, 1); assert.match(inspection(h).status, /金卡/);
+  await h.advance(5000); const target = guideTarget(h, 'buy');
+  assert.match(guideUI(h).innerHTML, /紫卡/);
+  activity(h, 'click', { target }); await h.finishAction();
+  assert.equal(h.qa.run().player.board.length, 5); assert.equal(h.qa.run().player.bench.length, 3);
+  assert.equal(h.qa.run().player.board[0].uid, anchor.uid); assert.equal(inspection(h).evolution, 2);
+  assert.equal(h.qa.run().pendingReward, null); assert.equal(h.dialog.open, false);
+});
+
+test('skipping or restarting an evolution cannot replay its purchase or apply a late scene over the next run', async () => {
+  const h = harness(evolutionRun()), before = copy(h.qa.run()), offer = before.shop.offers[0];
+  const pending = h.qa.act(engine.buy, offer.uid); await tick();
+  assert.equal(h.qa.run().player.board[0].evolution, 2); const saves = h.saves;
+  h.click('skip'); await h.settled(pending);
+  assert.equal(h.qa.run().player.gold, before.player.gold - 3); assert.equal(h.saves, saves);
+  assert.equal(h.qa.shown().player.board[0].evolution, 2); assert.equal(h.dialog.open, false);
+  const second = h.qa.act(engine.buy, h.qa.run().shop.offers[0].uid); await tick();
+  h.qa.newRun(); const fresh = copy(h.qa.run()); await h.settled(second);
+  assert.deepEqual(h.qa.run(), fresh); assert.deepEqual(h.qa.shown(), fresh); assert.equal(h.qa.busy(), false); assert.equal(h.timers.size, 0);
+});
+
+test('a pinned consumed ordinary card follows its exact golden successor while a same-name unconsumed legendary stays pinned', async () => {
+  for (const pinConsumed of [true, false]) {
+    const state = evolutionRun(0), ordinary = state.player.board[0];
+    state.player.board.push({ ...ordinary, uid: `u-${state.nextUid++}` });
+    if (!pinConsumed) {
+      const card = getCharacter(3);
+      state.player.board.unshift({ ...ordinary, uid: `u-${state.nextUid++}`, evolution: 3, golden: true, attack: card.attack * 4, hp: card.health * 4, maxHp: card.health * 4 });
+    }
+    const pinUid = pinConsumed ? state.player.board[1].uid : state.player.board[0].uid;
+    const h = harness(state); h.inspect({ inspectSource: 'owned', inspectUid: pinUid }, 'click');
+    h.inspector.scrollTop = 175; h.inspector.querySelector('.inspector-rules').open = true;
+    await h.drain(h.qa.act(engine.buy, state.shop.offers[0].uid));
+    const event = h.calls.find(call => call.step.type === 'triple').step;
+    assert.equal(event.evolution.consumedUids.includes(pinUid), pinConsumed);
+    assert.equal(inspection(h).uid, pinConsumed ? event.target.uid : pinUid);
+    assert.equal(inspection(h).evolution, pinConsumed ? 1 : 3);
+    assert(inspection(h).html.includes(CHARACTER_STORIES[3]));
+    assert.equal(h.inspector.scrollTop, 175); assert.equal(h.inspector.querySelector('.inspector-rules').open, true);
+    assert.equal(h.qa.run().pendingReward.choices.length, 3);
+  }
+});
+
+test('cancelled or failed first-gold playback still retargets its consumed pinned card without losing the saved reward', async () => {
+  for (const mode of ['reject', 'skip']) {
+    const state = evolutionRun(0), ordinary = state.player.board[0];
+    state.player.board.push({ ...ordinary, uid: `u-${state.nextUid++}` });
+    const h = harness(state); h.inspect({ inspectSource: 'owned', inspectUid: ordinary.uid }, 'click');
+    if (mode === 'reject') h.fx.play = () => Promise.reject(new Error('animation unavailable'));
+    const pending = h.qa.act(engine.buy, state.shop.offers[0].uid); await tick();
+    const golden = h.qa.run().player.board[0]; assert.equal(getEvolution(golden), 1);
+    if (mode === 'skip') h.click('skip'); await h.settled(pending);
+    assert.equal(inspection(h).uid, golden.uid, mode); assert.equal(inspection(h).evolution, 1);
+    assert.equal(h.qa.run().pendingReward.choices.length, 3); assert.equal(loadRun(h.store).state.pendingReward.choices.length, 3);
+  }
 });

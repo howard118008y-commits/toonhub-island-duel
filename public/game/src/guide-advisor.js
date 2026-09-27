@@ -1,5 +1,5 @@
-import { CONFIG, ROSTER, getCharacter } from './roster.js';
-import { canReceiveUnit, getSynergies } from './autobattler.js';
+import { CONFIG, ROSTER, EVOLUTIONS, getCharacter, getEvolution, getEvolutionMultiplier } from './roster.js';
+import { canReceiveUnit, getEvolutionOffer, getSynergies } from './autobattler.js';
 
 export const GUIDE_ADVICE_NOTE = '本機策略建議，並非保證最優。';
 const recruitable = new Set(ROSTER.map(card => card.id));
@@ -10,7 +10,7 @@ const cardUnit = card => ({ cardId: card.id, attack: card.attack, hp: card.healt
 function strength(board, enemyCount) {
   let value = 0;
   board.forEach((unit, index) => {
-    const card = getCharacter(unit.cardId), amount = (CONFIG.abilityValues[card.ability] || 0) * (unit.golden ? 2 : 1);
+    const card = getCharacter(unit.cardId), amount = (CONFIG.abilityValues[card.ability] || 0) * getEvolutionMultiplier(unit);
     const neighbors = Number(index > 0) + Number(index < board.length - 1);
     value += unit.attack + unit.hp * .65 + (unit.shield ? 2.5 : 0);
     if (card.keywords.includes('guard')) value += 1;
@@ -24,7 +24,7 @@ function strength(board, enemyCount) {
       deathBuff: board.length > 1 ? amount * 1.65 : 0,
       deathBlast: amount * enemyCount, deathWave: amount * enemyCount, deathThrow: amount,
       splash: amount * Math.min(2, Math.max(0, enemyCount - 1)) * .75,
-      attackGrowth: amount * .8, puppet: unit.golden ? 6.6 : 3.3,
+      attackGrowth: amount * .8, puppet: getEvolutionMultiplier(unit) * 3.3,
     };
     value += abilities[card.ability] || 0;
   });
@@ -102,7 +102,7 @@ export function getGuideAdvice({ run, shown = run, screen = 'run', busy = false,
   }
   if (state.pendingReward) {
     const expendable = [...bench].sort((a, b) => {
-      const keep = unit => strength([unit], enemyCount) + (all.filter(other => other.cardId === unit.cardId && !other.golden).length >= 2 ? 10 : 0);
+      const keep = unit => strength([unit], enemyCount) + (getEvolution(unit) > 0 && getEvolution(unit) < 3 || all.filter(other => other.cardId === unit.cardId && getEvolution(other) === 0).length >= 2 ? 10 : 0);
       return keep(a) - keep(b);
     })[0];
     return expendable ? sellAdvice(expendable, selectedUid) : null;
@@ -113,13 +113,13 @@ export function getGuideAdvice({ run, shown = run, screen = 'run', busy = false,
   }
   const candidates = gold >= CONFIG.buyCost ? state.shop.offers.filter(offer => canReceiveUnit(state, offer.cardId)).map(offer => {
     const card = getCharacter(offer.cardId), addition = bestAddition(board, cardUnit(card), enemyCount);
-    const triple = all.filter(unit => unit.cardId === card.id && !unit.golden).length >= 2;
-    return { offer, card, addition, triple, gain: addition.score - before + (triple ? 18 : 0) };
-  }).filter(candidate => candidate.triple || candidate.gain > 1.5).sort((a, b) => Number(b.triple) - Number(a.triple) || b.gain - a.gain) : [];
+    const evolution = getEvolutionOffer(state, card.id);
+    return { offer, card, addition, evolution, gain: addition.score - before + (evolution ? 18 : 0) };
+  }).filter(candidate => candidate.evolution || candidate.gain > 1.5).sort((a, b) => Number(Boolean(b.evolution)) - Number(Boolean(a.evolution)) || b.gain - a.gain) : [];
   if (candidates.length) {
     const choice = candidates[0];
     return advice('buy', { kind: 'shop-card', uid: choice.offer.uid }, `招募${choice.card.region}`,
-      choice.triple ? '這張可以三合一成金卡' : traitReason(board, choice.addition.board) || (board.length < CONFIG.boardSize ? `補上第${board.length + 1}位上場夥伴` : '這張可換上，改善目前陣容'));
+      choice.evolution ? choice.evolution.from === 0 ? '這張可以三合一成金卡' : `這張可讓同名角色升為${EVOLUTIONS[choice.evolution.to].name}` : traitReason(board, choice.addition.board) || (board.length < CONFIG.boardSize ? `補上第${board.length + 1}位上場夥伴` : '這張可換上，改善目前陣容'));
   }
   if (!board.length) {
     if (gold >= CONFIG.buyCost + CONFIG.refreshCost && !state.shop.offers.length) return control('refresh', '補上商店角色', '刷新後仍留有三金招募');

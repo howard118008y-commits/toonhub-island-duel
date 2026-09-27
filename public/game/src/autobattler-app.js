@@ -1,5 +1,5 @@
-import { CONFIG, TRAITS, ROSTER, getCharacter } from './roster.js';
-import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUnit, chooseTripleReward, startCombat, nextRound, getSynergies, canReceiveUnit, startEncounter, getEncounterOffer, getSquadLevel, resumeRecruitment } from './autobattler.js';
+import { CONFIG, TRAITS, ROSTER, getCharacter, EVOLUTIONS, getEvolution, getEvolutionMultiplier } from './roster.js';
+import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUnit, chooseTripleReward, startCombat, nextRound, getSynergies, canReceiveUnit, startEncounter, getEncounterOffer, getSquadLevel, resumeRecruitment, getEvolutionOffer } from './autobattler.js';
 import { loadRun, saveRun, clearRun } from './storage.js';
 import { createBattleEffects } from './effects.js';
 import { installThemeBridge } from './theme.js';
@@ -16,6 +16,7 @@ let shown = structuredClone(run);
 let busy = false;
 let playbackId = 0;
 let playbackController = null;
+let playbackEvolutions = [];
 let selectedUid = null;
 let previewOpen = false;
 let renderedPhase = '';
@@ -52,7 +53,8 @@ const unitList = state => [...state.player.board, ...state.player.bench];
 const selected = () => unitList(shown).find(unit => String(unit.uid) === String(selectedUid));
 const isRecruit = () => shown.phase === 'recruit' && !busy;
 const disabled = condition => condition ? 'disabled' : '';
-const skillText = (card, unit) => unit?.golden && (CONFIG.abilityValues[card.ability] || card.ability === 'puppet') ? card.shortText.replace(/\d+/g, number => String(Number(number) * 2)) : card.shortText;
+const skillText = (card, unit) => getEvolution(unit) > 0 && (CONFIG.abilityValues[card.ability] || card.ability === 'puppet') ? card.shortText.replace(/\d+/g, number => String(Number(number) * getEvolutionMultiplier(unit))) : card.shortText;
+const evolutionClass = unit => getEvolution(unit) === 1 ? 'is-golden' : getEvolution(unit) === 2 ? 'is-epic' : getEvolution(unit) === 3 ? 'is-legendary' : '';
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${({ heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>', sword: '<path d="m5 19 3-3m-3-3 6 6m-3-6L18 3l3 3-10 10M4 20l-1 1"/>', coin: '<circle cx="12" cy="12" r="9"/><path d="m12 6 4 6-4 6-4-6Z"/>', shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/>', arrow: '<path d="M4 12h15m-6-6 6 6-6 6"/>', close: '<path d="m6 6 12 12M6 18 18 6"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/>', refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.5-1L20 12M4 12l2.4 6A7 7 0 0 0 18 17"/>', lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>', star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/>' })[name] || ''}</svg>`;
 
 function announce(text) { message = text; live.textContent = text; }
@@ -72,7 +74,7 @@ function restoreFocus(key) {
 function cardView(card, { unit, offer, zone = 'board', compact = false, reward = false, source } = {}) {
   const trait = traitFor(card);
   const inspectSource = source || (unit ? 'owned' : offer ? 'shop' : reward ? 'reward' : 'catalog');
-  const ownCount = unitList(shown).filter(item => item.cardId === card.id && !item.golden).length;
+  const ownCount = unitList(shown).filter(item => item.cardId === card.id && getEvolution(item) === 0).length;
   const full = shown.player.bench.length >= CONFIG.benchSize;
   const canBuy = !busy && !shown.pendingReward && shown.player.gold >= CONFIG.buyCost && canReceiveUnit(shown, card.id);
   const selectedCard = unit && String(unit.uid) === String(selectedUid);
@@ -82,14 +84,19 @@ function cardView(card, { unit, offer, zone = 'board', compact = false, reward =
   const action = selectable ? 'select' : 'inspect';
   const actionLabel = selectable ? '點選或拖曳編排' : offer ? '拖到手牌購買，或點擊查看詳情' : '查看詳情';
   const skill = skillText(card, unit);
-  return `<article class="unit-card ${card.kind === 'monster' ? 'monster-card ' : ''}${zone === 'combat' ? 'card-board combat-card' : offer ? 'shop-card' : `card-${zone}`} ${compact && zone !== 'combat' ? 'piece-card' : ''} ${unit?.golden ? 'is-golden' : ''} ${selectedCard ? 'is-selected' : ''}" ${unit ? `data-card-uid="${esc(unit.uid)}"` : ''} ${selectable ? `data-drag-uid="${esc(unit.uid)}"` : offer ? `data-drag-offer="${esc(offer.uid)}"` : ''}>
-    <button class="card-face" type="button" data-inspect-card="${card.id}" data-inspect-source="${inspectSource}" ${unit ? `data-inspect-uid="${esc(unit.uid)}"` : ''} ${offer ? `data-inspect-offer="${esc(offer.uid)}"` : ''} data-action="${action}" data-id="${card.id}" ${unit ? `data-uid="${esc(unit.uid)}"` : ''} data-focus="${unit ? `unit-${esc(unit.uid)}` : `inspect-${esc(offer?.uid || card.id)}`}" ${disabled(selectable && busy)} ${selectable ? `aria-pressed="${Boolean(selectedCard)}"` : ''} aria-label="${esc(`${card.region}，${actionLabel}，${attack}攻擊、${hp}生命。${unit?.golden ? '金卡。' : ''}${skill}`)}">
-      <span class="card-heading"><strong>${esc(card.id === 101 ? '戲偶' : card.region)}</strong><span class="tier-mark">${unit?.golden ? '金卡' : `${card.tier}階`}</span></span>
+  const quality = EVOLUTIONS[getEvolution(unit)];
+  const nextEvolution = offer ? getEvolutionOffer(shown, card.id) : null;
+  const evolutionHint = nextEvolution ? `再1張升${EVOLUTIONS[nextEvolution.to].name}` : ownCount && offer ? `普通卡 ${ownCount}/3` : '';
+  return `<article data-evolution="${getEvolution(unit)}" class="unit-card ${card.kind === 'monster' ? 'monster-card ' : ''}${zone === 'combat' ? 'card-board combat-card' : offer ? 'shop-card' : `card-${zone}`} ${compact && zone !== 'combat' ? 'piece-card' : ''} ${evolutionClass(unit)} ${selectedCard ? 'is-selected' : ''}" ${unit ? `data-card-uid="${esc(unit.uid)}"` : ''} ${selectable ? `data-drag-uid="${esc(unit.uid)}"` : offer ? `data-drag-offer="${esc(offer.uid)}"` : ''}>
+    <button class="card-face" type="button" data-inspect-card="${card.id}" data-inspect-source="${inspectSource}" ${unit ? `data-inspect-uid="${esc(unit.uid)}"` : ''} ${offer ? `data-inspect-offer="${esc(offer.uid)}"` : ''} data-action="${action}" data-id="${card.id}" ${unit ? `data-uid="${esc(unit.uid)}"` : ''} data-focus="${unit ? `unit-${esc(unit.uid)}` : `inspect-${esc(offer?.uid || card.id)}`}" ${disabled(selectable && busy)} ${selectable ? `aria-pressed="${Boolean(selectedCard)}"` : ''} aria-label="${esc(`${card.region}，${actionLabel}，${attack}攻擊、${hp}生命。${quality.level ? `${quality.name}。` : ''}${skill}`)}">
+      <span class="card-heading"><strong>${esc(card.id === 101 ? '戲偶' : card.region)}</strong><span class="tier-mark">${quality.level ? quality.name : `${card.tier}階`}</span></span>
       <span class="portrait"><img src="${imageUrl(card.id)}" width="320" height="480" alt="" loading="lazy" decoding="async" draggable="false" data-art-id="${card.id}"></span>
-      ${!compact ? `<span class="card-trait">${esc(trait?.name || '召喚物')}${ownCount && offer ? `<span>已擁有 ${ownCount}/3</span>` : ''}</span><span class="card-skill">${esc(skill)}</span>` : `<span class="combat-badges">${unit?.shield ? `${icon('shield')}護盾` : card.keywords.includes('guard') ? '守護' : unit?.golden ? '金卡' : ''}</span>`}
+      ${!compact ? `<span class="card-trait">${esc(trait?.name || '召喚物')}${ownCount && offer ? `<span>已擁有 ${ownCount}/3</span>` : ''}</span><span class="card-skill">${esc(skill)}</span>` : `<span class="combat-badges">${unit?.shield ? `${icon('shield')}護盾` : card.keywords.includes('guard') ? '守護' : quality.level ? quality.name : ''}</span>`}
+      ${zone === 'combat' && quality.level ? `<span class="evolution-seal">${quality.name}</span>` : ''}
+      ${evolutionHint ? `<span class="shop-evolution-hint ${nextEvolution ? 'can-evolve' : ''}">${esc(evolutionHint)}</span>` : ''}
       <span class="card-stats"><span class="attack-stat">${icon('sword')}<b>${attack}</b></span><span class="health-stat ${hp < (unit?.maxHp ?? card.health) ? 'is-hurt' : ''}">${icon('heart')}<b>${hp}</b></span></span>
     </button>
-    ${offer ? `<button class="buy-button" type="button" data-action="buy" data-uid="${esc(offer.uid)}" data-focus="buy-${esc(offer.uid)}" ${disabled(!canBuy)} aria-label="購買${esc(card.region)}，${CONFIG.buyCost}金幣"><b>${CONFIG.buyCost}</b><small>${full && ownCount < 2 ? '已滿' : shown.player.gold < CONFIG.buyCost ? '缺金' : '招募'}</small></button>` : ''}
+    ${offer ? `<button class="buy-button" type="button" data-action="buy" data-uid="${esc(offer.uid)}" data-focus="buy-${esc(offer.uid)}" ${disabled(!canBuy)} aria-label="購買${esc(card.region)}，${CONFIG.buyCost}金幣"><b>${CONFIG.buyCost}</b><small>${full && !canReceiveUnit(shown, card.id) ? '已滿' : shown.player.gold < CONFIG.buyCost ? '缺金' : '招募'}</small></button>` : ''}
     ${reward ? `<button class="buy-button" type="button" data-action="reward" data-id="${card.id}" data-focus="reward-${card.id}" aria-label="免費選擇${esc(card.region)}，0金幣" ${disabled(!canReceiveUnit(shown, card.id))}><span>${canReceiveUnit(shown, card.id) ? '免費選擇' : '手牌已滿'}<small>0 金幣</small></span></button>` : ''}
     ${selectable ? `<button class="card-detail-trigger" type="button" data-action="inspect" data-id="${card.id}" data-uid="${esc(unit.uid)}" data-focus="detail-${esc(unit.uid)}" aria-label="查看${esc(card.region)}完整技能">${icon('info')}</button>` : ''}
   </article>`;
@@ -237,6 +244,7 @@ function stopPlayback() {
   playbackId++;
   playbackController?.abort();
   playbackController = null;
+  playbackEvolutions = [];
   busy = false;
   cancelEffects();
 }
@@ -281,6 +289,7 @@ async function act(action, ...args) {
   const result = action(run, ...args);
   if (!result.ok) { announce(result.message); render(preferred); return; }
   persist();
+  playbackEvolutions = (result.timeline || []).filter(step => step.type === 'triple');
   const id = ++playbackId;
   const controller = new AbortController();
   playbackController = controller;
@@ -295,23 +304,34 @@ async function act(action, ...args) {
         message = `${getCharacter(step.actor.cardId).region}出手，攻擊${getCharacter(step.target.cardId).region}。`;
         live.textContent = message;
       }
-      const updateAtImpact = step.type === 'damage';
+      if (step.type === 'triple' && step.evolution) {
+        const quality = EVOLUTIONS[step.evolution.to];
+        announce(`${getCharacter(step.target.cardId).region}進化為${quality.name}，攻擊${step.evolution.before.attack}變為${step.evolution.after.attack}，生命${step.evolution.before.hp}變為${step.evolution.after.hp}。`);
+      }
+      const updateAtImpact = step.type === 'damage' || step.type === 'buff';
       if (updateAtImpact) { shown = step.snapshot; render(); }
       await playVisualStep(step, controller.signal);
       if (id !== playbackId) return;
-      if (!updateAtImpact) { shown = step.snapshot; render(); }
+      if (!updateAtImpact) {
+        const evolvedReading = transferInspectorEvolution([step]);
+        shown = step.snapshot; render();
+        if (evolvedReading) restoreInspectorReading(evolvedReading);
+      }
     }
   } catch (error) {
     if (id === playbackId) { playbackFailed = true; console.warn('Battle playback recovered to the saved state.', error); }
   } finally {
     if (id === playbackId) {
       playbackController = null;
+      const evolvedReading = transferInspectorEvolution(playbackEvolutions);
+      playbackEvolutions = [];
       cancelEffects();
       shown = structuredClone(run);
       busy = false;
       announce(playbackFailed ? [startCombat, startEncounter].includes(action) ? '動畫中斷，已保留本場結果，可繼續下一步。' : '動畫中斷，已完成此次操作。' : result.message || '已完成操作。');
       if (!unitList(shown).some(unit => String(unit.uid) === String(selectedUid))) selectedUid = null;
       render(action === nextRound ? 'shop-title' : action === sell ? 'team-title' : focusKey() || preferred);
+      if (evolvedReading) restoreInspectorReading(evolvedReading);
       if (action === buy || action === chooseTripleReward) {
         const joined = unitList(run).find(unit => !previousUids.has(unit.uid));
         if (run.pendingReward) { selectedUid = null; announce('三合一金卡完成，請選擇免費夥伴。'); render(); }
@@ -328,6 +348,16 @@ function openModal(content) {
   dialog.innerHTML = `<button class="dialog-close icon-button" data-action="close-dialog" aria-label="關閉對話框">${icon('close')}</button>${content}`;
   if (!dialog.open) dialog.showModal();
   cancelGuide();
+}
+function transferInspectorEvolution(steps) {
+  let reading = null;
+  for (const step of steps) {
+    if (step.type !== 'triple' || !inspectorPinned || !inspectorTarget?.uid || !step.evolution?.consumedUids?.some(uid => String(uid) === inspectorTarget.uid)) continue;
+    reading = captureInspectorReading();
+    inspectorTarget = { ...inspectorTarget, uid: String(step.target.uid), source: 'owned', lastUnit: null };
+    if (reading) reading.key = inspectorKey();
+  }
+  return reading;
 }
 function resetInspector() { inspectorTarget = null; inspectorPinned = false; inspectorOpen = false; inspectorReturnFocus = ''; }
 function inspectorDescriptor(id, uid, source, offerUid) {
@@ -355,7 +385,7 @@ function inspectorData(target = inspectorTarget) {
   if (battleSource && combat && missing && target.lastUnit) target.lastUnit = { ...target.lastUnit, hp: 0 };
   const unit = current || target.lastUnit;
   const offer = target.source === 'shop' ? shown.shop.offers.find(item => String(item.uid) === target.offerUid && item.cardId === target.cardId) : null;
-  let status = target.source === 'shop' ? offer ? '商店 · 普通基礎數值' : '已離開商店 · 基礎數值' : target.source === 'reward' ? '三合一獎勵 · 基礎數值' : target.source === 'catalog' ? '圖鑑 · 普通基礎數值' : target.source === 'encounter' ? '本次小怪的實際數值' : target.source === 'opponent' ? '下一位對手的實際數值' : unit?.golden ? '金卡 · 目前數值' : '角色目前數值';
+  let status = target.source === 'shop' ? offer ? '商店 · 普通基礎數值' : '已離開商店 · 基礎數值' : target.source === 'reward' ? '三合一獎勵 · 基礎數值' : target.source === 'catalog' ? '圖鑑 · 普通基礎數值' : target.source === 'encounter' ? '本次小怪的實際數值' : target.source === 'opponent' ? '下一位對手的實際數值' : getEvolution(unit) ? `${EVOLUTIONS[getEvolution(unit)].name} · 目前數值` : '角色目前數值';
   if (battleSource) status = combat ? missing || unit?.hp <= 0 ? '已退場 · 本場最後數值' : '戰鬥中 · 即時數值' : '本場已結束 · 最後戰鬥數值';
   else if (missing) status = '已離場 · 最後查看數值';
   const hp = battleSource && combat && missing ? 0 : Math.max(0, unit?.hp ?? card.health);
@@ -366,9 +396,13 @@ function inspectorMarkup() {
   if (!data) return `<div class="inspector-empty"><span class="inspector-island" aria-hidden="true">台</span><h2>每張卡，都有故事。</h2><p>滑過或點選一位角色，<br>看看能力與他的島嶼日常。</p><small>技能、攻擊與生命會隨戰局更新。</small></div>`;
   const { card, unit, current, offer, status, hp, attack, skill } = data;
   const trait = traitFor(card);
+  const quality = EVOLUTIONS[getEvolution(unit)];
+  const evolutionOffer = getEvolutionOffer(shown, card.id);
+  const collectible = ROSTER.some(item => item.id === card.id);
+  const evolutionRule = quality.level === 3 ? '已達最高品質。新招募的同名普通卡會保留為另一張角色。' : quality.level > 0 ? `再招募1張同名普通卡，可升${EVOLUTIONS[quality.level + 1].name}。${evolutionOffer && evolutionOffer.targetUid !== unit?.uid ? '同名卡會優先進化較高品質的夥伴。' : ''}` : evolutionOffer ? `再招募1張同名普通卡，${EVOLUTIONS[evolutionOffer.to].name}就緒。` : '集齊3張同名普通卡合成金卡，並獲得一次免費夥伴。';
   const canRecruit = Boolean(offer && isRecruit() && !shown.pendingReward && shown.player.gold >= CONFIG.buyCost && canReceiveUnit(shown, card.id));
   const canDeploy = Boolean(current && inspectorTarget.source === 'owned' && shown.player.bench.some(item => item.uid === current.uid) && isRecruit() && shown.player.board.length < CONFIG.boardSize);
-  return `<article class="inspector-card ${unit?.golden ? 'is-golden' : ''} ${card.kind === 'monster' ? 'is-monster' : ''}" data-inspected-card="${card.id}" data-inspected-uid="${esc(inspectorTarget.uid || '')}" data-inspected-source="${esc(inspectorTarget.source)}"><div class="inspector-art"><span class="inspector-tier" aria-label="${card.tier}階">${Array.from({ length: card.tier }, () => icon('star')).join('')}</span><img src="${imageUrl(card.id, true)}" width="1024" height="1536" alt="${esc(card.region + card.job)}立體角色" data-art-id="${card.id}"><div class="inspector-numbers"><span class="inspector-attack"><small>攻擊</small><b>${attack}</b></span><span class="inspector-health"><small>生命</small><b>${hp}</b></span></div></div><header class="inspector-name"><h2>${esc(card.region)}</h2><p>${esc(card.job)}</p></header><div class="inspector-parchment"><p class="inspector-status">${esc(status)}</p><section class="inspector-ability"><h3>角色能力 ${unit?.golden ? '<span>金卡</span>' : ''}</h3><p>${esc(skill)}</p></section><details class="inspector-rules"><summary data-focus="inspector-rules">技能詳解${trait ? '與羈絆' : ''}</summary><p>${esc(card.description.replace(card.shortText, skill))}</p>${trait ? `<strong>${esc(trait.name)}羈絆</strong><p>${esc(trait.description)}</p>` : ''}</details><blockquote>「${esc(card.quote)}」</blockquote><section class="inspector-story"><h3>${CHARACTER_STORIES[card.id] ? '島嶼小傳' : '召喚物紀錄'}</h3><p>${esc(CHARACTER_STORIES[card.id] || card.description)}</p></section><p class="inspector-fiction">${esc(CHARACTER_STORY_NOTE)}</p></div>${offer || canDeploy ? `<footer class="inspector-actions">${offer ? `<button class="primary-button" data-action="inspector-buy" ${disabled(!canRecruit)}>招募 · ${CONFIG.buyCost} 金</button>` : `<button class="primary-button" data-action="inspector-deploy" ${disabled(busy)}>放上棋盤</button>`}<button class="secondary-button" data-action="inspector-close">回棋盤${current ? '選位' : ''}</button></footer>` : ''}</article>`;
+  return `<article data-inspected-evolution="${quality.level}" class="inspector-card ${evolutionClass(unit)} ${card.kind === 'monster' ? 'is-monster' : ''}" data-inspected-card="${card.id}" data-inspected-uid="${esc(inspectorTarget.uid || '')}" data-inspected-source="${esc(inspectorTarget.source)}"><div class="inspector-art"><span class="inspector-tier" aria-label="${card.tier}階">${Array.from({ length: card.tier }, () => icon('star')).join('')}</span><img src="${imageUrl(card.id, true)}" width="1024" height="1536" alt="${esc(card.region + card.job)}立體角色" data-art-id="${card.id}"><div class="inspector-numbers"><span class="inspector-attack"><small>攻擊</small><b>${attack}</b></span><span class="inspector-health"><small>生命</small><b>${hp}</b></span></div></div><header class="inspector-name"><h2>${esc(card.region)}</h2><p>${esc(card.job)}</p></header><div class="inspector-parchment"><p class="inspector-status">${esc(status)}</p>${collectible ? `<div class="inspector-evolution"><strong>${quality.name}${quality.level ? ` · ${quality.multiplier}倍基礎能力` : ''}</strong><p>${esc(evolutionRule)}</p></div>` : ''}<section class="inspector-ability"><h3>角色能力 ${quality.level ? `<span>${quality.name}</span>` : ''}</h3><p>${esc(skill)}</p></section><details class="inspector-rules"><summary data-focus="inspector-rules">技能詳解${trait ? '與羈絆' : ''}</summary><p>${esc(card.description.replace(card.shortText, skill))}</p>${trait ? `<strong>${esc(trait.name)}羈絆</strong><p>${esc(trait.description)}</p>` : ''}</details><blockquote>「${esc(card.quote)}」</blockquote><section class="inspector-story"><h3>${CHARACTER_STORIES[card.id] ? '島嶼小傳' : '召喚物紀錄'}</h3><p>${esc(CHARACTER_STORIES[card.id] || card.description)}</p></section><p class="inspector-fiction">${esc(CHARACTER_STORY_NOTE)}</p></div>${offer || canDeploy ? `<footer class="inspector-actions">${offer ? `<button class="primary-button" data-action="inspector-buy" ${disabled(!canRecruit)}>招募 · ${CONFIG.buyCost} 金</button>` : `<button class="primary-button" data-action="inspector-deploy" ${disabled(busy)}>放上棋盤</button>`}<button class="secondary-button" data-action="inspector-close">回棋盤${current ? '選位' : ''}</button></footer>` : ''}</article>`;
 }
 function inspectorView() {
   return `<aside class="card-inspector ${inspectorOpen ? 'is-open' : ''}" aria-label="角色能力與故事"><header class="inspector-toolbar"><strong>角色手札</strong><button data-action="inspector-pin" data-focus="inspector-pin" aria-pressed="${inspectorPinned}" ${disabled(!inspectorTarget)}>${inspectorPinned ? '解除固定' : '固定這張'}</button><button data-action="inspector-close" data-focus="inspector-close" aria-label="關閉介紹，回到棋盤">回棋盤 ${icon('close')}</button></header><div id="inspector-content" data-inspector-key="${esc(inspectorKey())}">${inspectorMarkup()}</div></aside>`;
@@ -426,10 +460,10 @@ function details(id, uid, source, offerUid) {
 }
 function showReward() {
   if (!run.pendingReward) return;
-  openModal(`<div class="reward-dialog"><span class="overline">三合一金卡獎勵</span><h2 id="dialog-title">再選一位，免費加入主場。</h2><p>只選一張，0 金幣。${run.pendingReward.choices.every(id => !canReceiveUnit(run, id)) ? '手牌已滿，先回棋盤上場或出售一位。' : '新夥伴先進手牌，之後再擺上棋盤。'}</p><div class="reward-choices">${run.pendingReward.choices.map(id => cardView(getCharacter(id), { reward: true })).join('')}</div><button class="secondary-button reward-arrange" data-action="close-dialog">先回棋盤編排</button></div>`);
+  openModal(`<div class="reward-dialog"><span class="overline">三合一金卡獎勵</span><h2 id="dialog-title">再選一位，免費加入主場。</h2><p>只選一張，0 金幣。${run.pendingReward.choices.every(id => !canReceiveUnit(run, id)) ? '手牌已滿，先回棋盤上場或出售一位。' : '新夥伴先進手牌；滿足同名進化條件時會直接融合。'}</p><div class="reward-choices">${run.pendingReward.choices.map(id => cardView(getCharacter(id), { reward: true })).join('')}</div><button class="secondary-button reward-arrange" data-action="close-dialog">先回棋盤編排</button></div>`);
 }
 function rules() {
-  openModal(`<div class="rules-copy"><span class="overline">不用趕，沒有準備倒數</span><h2 id="dialog-title">招募、編排，交給夥伴出手。</h2><ol><li><strong>招募你的主場</strong><p>每次購買先進手牌，再親手放上棋盤。買角色 3 金、賣出得 1 金、刷新商店 1 金；凍結免費，下輪保留未買角色並補空位。刷新會解凍。</p></li><li><strong>編排 5 位夥伴</strong><p>5 位上陣、3 位手牌。點一位再點目標席位調整順序；跨區會交換。2／4 位不同同羈絆角色可啟動效果，手牌不計入。</p></li><li><strong>合金與升階</strong><p>同角色 3 張普通卡自動合為金卡，並免費三選一。升階會出現更高階角色；費用可在商店看到，每過一輪會下降。</p></li><li><strong>自動對戰，挑戰 10 輪</strong><p>按「準備好了，開戰」後自動選目標，守護優先，角色交戰同時互相扣血。戰鬥傷勢不帶回招募。生命歸零即結束；第 10 輪必須獲勝且存活才通關。</p></li><li><strong>路邊小怪與隊伍升級</strong><p>第3、6、9輪可選一次小怪挑戰。勝利得1金和1經驗，敗北扣2生命，平手無獎。2經驗升2級，最左位本場+1生命；3經驗升3級再+1攻擊。小怪打完回同輪旅店，不重發收入。直接開主競技戰即略過當輪小怪。</p></li><li><strong>金幣與儲存</strong><p>下一輪才領新收入，剩餘金幣不保留。進度僅存此裝置／瀏覽器；戰鬥中重新整理會顯示已結算結果，不重複扣血或領錢。無法儲存時會明確提醒。</p></li></ol><button class="primary-button" data-action="close-dialog">知道了，回到主場</button></div>`);
+  openModal(`<div class="rules-copy"><span class="overline">不用趕，沒有準備倒數</span><h2 id="dialog-title">招募、編排，交給夥伴出手。</h2><ol><li><strong>招募你的主場</strong><p>每次購買先進手牌，再親手放上棋盤。買角色 3 金、賣出得 1 金、刷新商店 1 金；凍結免費，下輪保留未買角色並補空位。刷新會解凍。</p></li><li><strong>編排 5 位夥伴</strong><p>5 位上陣、3 位手牌。點一位再點目標席位調整順序；跨區會交換。2／4 位不同同羈絆角色可啟動效果，手牌不計入。</p></li><li><strong>角色進化與旅店升階</strong><p>3張同名普通卡合成金卡，再招募第4張同名普通卡升紫卡，第5張升傳說。普通／金／紫／傳說的基礎攻血與可成長技能為1／2／3／4倍；護盾、連擊與羈絆不重複疊加。只有首次升金可免費三選一。旅店升階則開放更高商店階級的角色，與角色進化是不同系統；費用每輪下降。</p></li><li><strong>自動對戰，挑戰 10 輪</strong><p>按「準備好了，開戰」後自動選目標，守護優先，角色交戰同時互相扣血。戰鬥傷勢不帶回招募。生命歸零即結束；第 10 輪必須獲勝且存活才通關。</p></li><li><strong>路邊小怪與隊伍升級</strong><p>第3、6、9輪可選一次小怪挑戰。勝利得1金和1經驗，敗北扣2生命，平手無獎。2經驗升2級，最左位本場+1生命；3經驗升3級再+1攻擊。小怪打完回同輪旅店，不重發收入。直接開主競技戰即略過當輪小怪。</p></li><li><strong>金幣與儲存</strong><p>下一輪才領新收入，剩餘金幣不保留。進度僅存此裝置／瀏覽器；戰鬥中重新整理會顯示已結算結果，不重複扣血或領錢。無法儲存時會明確提醒。</p></li></ol><button class="primary-button" data-action="close-dialog">知道了，回到主場</button></div>`);
 }
 function newRun() {
   resetInspector();
@@ -498,7 +532,7 @@ document.addEventListener('click', event => {
     return;
   }
   if (action === 'new-run') { newRun(); return; }
-  if (action === 'skip') { stopPlayback(); shown = structuredClone(run); announce('已略過動畫，這是本場結算結果。'); render('primary'); return; }
+  if (action === 'skip') { const reading = transferInspectorEvolution(playbackEvolutions); stopPlayback(); shown = structuredClone(run); announce('已略過動畫，這是本場結算結果。'); render('primary'); if (reading) restoreInspectorReading(reading); return; }
   if (action === 'section') { app.querySelector(button.dataset.section === 'shop' ? '.shop-section' : '.team-section')?.scrollIntoView({ block: 'start', behavior: 'instant' }); return; }
   if (busy) return;
   if (action === 'shop-scroll') { const rail = app.querySelector('.shop-rail'); rail?.scrollBy({ left: Number(button.dataset.direction) * rail.clientWidth * .85, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); return; }

@@ -90,7 +90,7 @@ test('recommendations distinguish duplicate-card UIDs and clear an unrelated sel
   assert.equal(advise(corrupt), null, 'an ambiguous UID must never select the wrong card');
 });
 
-test('full hand and board can buy a real triple but golden copies never count toward that triple', () => {
+test('full hand and board can buy a real triple while maxed legendary copies cannot absorb another card', () => {
   const run = engine.createRun({ seed: 83 });
   run.player.board = [9, 9, 3, 4, 5].map(id => unit(run, id, { attack: 10, hp: 10, maxHp: 10 })); run.player.bench = [6, 7, 8].map(id => unit(run, id)); offers(run, [9, 2]);
   const hint = advise(run); assert.equal(hint.action, 'buy'); assert.equal(hint.target.uid, run.shop.offers[0].uid); assert.match(hint.reason, /三合一/);
@@ -99,7 +99,7 @@ test('full hand and board can buy a real triple but golden copies never count to
   const selected = act(run, makeRoom); act(run, advise(run, selected), selected);
   assert.equal(advise(run).action, 'open-reward');
   const golden = engine.createRun({ seed: 84 });
-  golden.player.board = [9, 9, 3, 4, 5].map(id => unit(golden, id, id === 9 ? { golden: true, attack: 2, hp: 10, maxHp: 10 } : {}));
+  golden.player.board = [9, 9, 3, 4, 5].map(id => unit(golden, id, id === 9 ? { golden: true, evolution: 3, attack: 4, hp: 20, maxHp: 20 } : {}));
   golden.player.bench = [6, 7, 8].map(id => unit(golden, id)); offers(golden, [9]);
   assert.notEqual(advise(golden).action, 'buy');
 });
@@ -113,6 +113,17 @@ test('pending free rewards make space through legal deployment or sale instead o
   assert.equal(advise(run).action, 'open-reward'); act(run, advise(run)); assert.equal(run.pendingReward, null);
   const room = copy(run); room.player.board.pop(); room.pendingReward = { choices: [15, 16, 17] };
   const deploy = advise(room); assert.equal(deploy.action, 'select'); assert.equal(deploy.target.zone, 'bench');
+});
+
+test('advisor prioritizes legal purple and legendary evolution and never promises a second gold reward', () => {
+  for (const rank of [1, 2]) {
+    const run = engine.createRun({ seed: 90 });
+    run.player.board = [6, 3, 4, 5, 7].map(id => unit(run, id, id === 6 ? { golden: true, evolution: rank, attack: 3 * (rank + 1), hp: 2 * (rank + 1), maxHp: 2 * (rank + 1) } : { attack: 10, hp: 10, maxHp: 10 }));
+    run.player.bench = [3, 5, 9].map(id => unit(run, id, { attack: 1, hp: 1, maxHp: 1 })); offers(run, [6]);
+    const before = copy(run), advice = advise(freeze(copy(run))); assert.deepEqual(run, before);
+    assert.equal(advice.action, 'buy'); assert.equal(advice.target.uid, run.shop.offers[0].uid); assert.match(advice.reason, rank === 1 ? /紫卡/ : /傳說/); assert.doesNotMatch(advice.reason, /援軍|三合一/);
+    act(run, advice); assert.equal(run.player.board[0].evolution, rank + 1); assert.equal(run.pendingReward, null); assert.equal(engine.validateRun(run).ok, true);
+  }
 });
 
 test('matching a distinct faction partner is explained truthfully and equal candidates keep shop order', () => {

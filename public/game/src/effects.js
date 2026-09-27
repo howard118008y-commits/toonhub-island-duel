@@ -1,4 +1,4 @@
-import { getCharacter as getCard } from './roster.js';
+import { getCharacter as getCard, EVOLUTIONS } from './roster.js';
 import { characterVoice } from './voices.js';
 
 const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
@@ -71,7 +71,8 @@ export function createBattleEffects({ root }) {
   }
 
   function later(callback, delay) {
-    const timer = win.setTimeout(() => { timers.delete(timer); callback(); }, delay);
+    const scheduledGeneration = generation;
+    const timer = win.setTimeout(() => { timers.delete(timer); if (scheduledGeneration === generation) callback(); }, delay);
     timers.add(timer);
     return timer;
   }
@@ -124,6 +125,7 @@ export function createBattleEffects({ root }) {
   function sync() {
     const frame = capture();
     for (const item of items) {
+      if (item.kind === 'evolution') continue;
       const located = frame.entities.get(keyOf(item.entity));
       // A vacated slot may already belong to a summon; effects follow the UID.
       if (item.entity.kind === 'card' && !located) { remove(item); continue; }
@@ -172,13 +174,14 @@ export function createBattleEffects({ root }) {
     const clampX = value => Math.max(8, Math.min(value, viewportWidth - width - 8));
     const clampY = value => Math.max(8, Math.min(value, viewportHeight - height - 8));
     let x = clampX(rect.left + (rect.width - width) / 2);
-    let y = clampY(rect.top + (rect.height - height) / 2 - 10);
-    if (item.kind !== 'guard') {
-      const occupied = [...items].filter(other => other !== item && other.kind !== 'guard' && other.placed);
+    let y = clampY(item.kind === 'gold' && item.energy ? rect.top - height - 8 : rect.top + (rect.height - height) / 2 - 10);
+    const centered = ['damage', 'heal', 'buff', 'guard'].includes(item.kind);
+    if (!centered) {
+      const occupied = [...items].filter(other => other !== item && other.placed);
       const clear = (left, top) => occupied.every(other =>
         left + width + 6 <= other.placed.left || left >= other.placed.right + 6 ||
         top + height + 6 <= other.placed.top || top >= other.placed.bottom + 6);
-      const candidates = item.kind === 'speech'
+      const candidates = item.kind === 'gold' ? [y, y - height - 7] : item.kind === 'speech'
         ? [rect.top - height - 9, rect.top + rect.height + 9, rect.top - height * 2 - 16, rect.top + rect.height + height + 16]
         : [y, y - height - 7, y + height + 7, y - (height + 7) * 2, y + (height + 7) * 2];
       const positions = candidates.map(top => [x, clampY(top)]);
@@ -188,18 +191,26 @@ export function createBattleEffects({ root }) {
         const blocker = occupied.find(other => positions.some(([left, top]) =>
           left < other.placed.right + 6 && left + width + 6 > other.placed.left &&
           top < other.placed.bottom + 6 && top + height + 6 > other.placed.top));
-        if (blocker) { remove(blocker); return position(item, frame); }
+        if (blocker && !['damage', 'heal', 'buff', 'guard'].includes(blocker.kind)) { remove(blocker); return position(item, frame); }
+        else if (blocker) { remove(item); return; }
       }
-    } else if (item.kind === 'guard') y = clampY(rect.top + rect.height / 2 - height / 2 + 18);
+    } else if (item.kind === 'guard') y = clampY(rect.top + rect.height / 2 - height / 2);
     item.node.style.left = `${x}px`;
     item.node.style.top = `${y}px`;
     item.placed = { left: x, top: y, right: x + width, bottom: y + height };
+    if (centered) {
+      for (const other of [...items]) {
+        if (other.kind !== 'speech' || !other.placed) continue;
+        if (x < other.placed.right + 6 && x + width + 6 > other.placed.left && y < other.placed.bottom + 6 && y + height + 6 > other.placed.top) remove(other);
+      }
+    }
   }
 
-  function popup(text, kind, entity, frame, { energy = false, life = 1100 } = {}) {
+  function popup(text, kind, entity, frame, { energy = false, life = 1100, stats = null } = {}) {
     if (!anchor(entity, frame, energy)) return;
-    if (kind === 'gold') {
-      [...items].filter(item => item.kind === kind && keyOf(item.entity) === keyOf(entity)).forEach(remove);
+    const central = ['damage', 'heal', 'buff', 'guard'];
+    if (kind === 'gold' || central.includes(kind)) {
+      [...items].filter(item => (kind === 'gold' ? item.kind === 'gold' : central.includes(item.kind)) && keyOf(item.entity) === keyOf(entity)).forEach(remove);
     }
     const node = doc.createElement('div');
     node.className = `battle-fx-popup battle-fx-${kind}`;
@@ -208,9 +219,16 @@ export function createBattleEffects({ root }) {
     if (entity.kind === 'hero') node.dataset.hero = 'true';
     if (entity.uid !== undefined) node.dataset.effectUid = String(entity.uid);
     node.textContent = text;
+    if (kind === 'buff' && stats) {
+      if (stats.attack) node.dataset.buffAttack = `${stats.attack > 0 ? '+' : '−'}${Math.abs(stats.attack)} 攻`;
+      if (stats.hp) node.dataset.buffHealth = `${stats.hp > 0 ? '+' : '−'}${Math.abs(stats.hp)} 血`;
+      const width = anchor(entity, frame)?.rect.width;
+      if (width) node.style.width = `${Math.max(48, Math.min(106, width - 4))}px`;
+    }
     const item = register({ node, kind, entity, energy, timers: [], placed: null });
     position(item, frame);
-    const reduce = reducedMotion.matches;
+    if (!items.has(item)) return;
+    const reduce = reducedMotion.matches || kind === 'gold';
     motion(node, reduce ? [{ opacity: 0 }, { opacity: 1 }] : kind === 'damage' ? [
       { opacity: 0, transform: 'translateY(5px) scale(.9)' },
       { opacity: 1, transform: 'translateY(0) scale(1.14)', offset: .45 },
@@ -231,6 +249,74 @@ export function createBattleEffects({ root }) {
     if (!text) return;
     const item = popup(`${card?.region || '角色'}：${text}`, 'speech', entity, frame, { life: 1200 });
     if (item) item.node.dataset.voice = kind;
+  }
+
+  function pulseStat(entity, field, frame) {
+    const card = anchor(entity, frame)?.element;
+    const ghost = [...items].find(item => item.kind === 'ghost' && keyOf(item.entity) === keyOf(entity))?.node;
+    const selector = field === 'attack' ? '.attack-stat' : '.health-stat';
+    for (const element of [card?.querySelector(selector), ghost?.querySelector(selector)].filter(Boolean)) {
+      motion(element, reducedMotion.matches ? [{ opacity: .65 }, { opacity: 1 }] : [
+        { transform: 'scale(1)' }, { transform: 'scale(1.26)', offset: .35 }, { transform: 'scale(1)' },
+      ], 260);
+    }
+  }
+
+  function evolution(step, frame) {
+    const change = step.evolution || { from: 0, to: 1, consumedUids: [] };
+    const rank = EVOLUTIONS[change.to] || EVOLUTIONS[1];
+    const card = getCard(step.target?.cardId || step.actor?.cardId);
+    const target = step.target || step.actor;
+    const before = change.before || { attack: card?.attack || 0, hp: card?.health || 0 };
+    const after = change.after || { attack: (card?.attack || 0) * rank.multiplier, hp: (card?.health || 0) * rank.multiplier };
+    const table = root.querySelector('.table-framework');
+    const area = table ? bounds(table) : { left: 0, top: 0, width: win.innerWidth, height: win.innerHeight };
+    const width = Math.min(286, area.width - 24);
+    const left = Math.max(12, area.left + (area.width - width) / 2);
+    const top = Math.max(72, Math.min(area.top + area.height * .4 - 92, win.innerHeight - 268));
+    const node = doc.createElement('div');
+    node.className = `battle-fx-evolution is-${rank.key}`;
+    node.dataset.effect = 'evolution';
+    node.dataset.evolution = String(change.to);
+    Object.assign(node.style, { left: `${left}px`, top: `${top}px`, width: `${width}px` });
+    const item = register({ node, kind: 'evolution', entity: target, timers: [] });
+    const label = doc.createElement('span'); label.className = 'evolution-caption'; label.textContent = change.from === 0 ? '三合一・進化' : '同名共鳴・進化'; node.append(label);
+    const name = doc.createElement('strong'); name.className = 'evolution-name'; name.textContent = `${card?.region || '角色'}・${rank.name}`; node.append(name);
+    const values = doc.createElement('div'); values.className = 'evolution-values'; node.append(values);
+    for (const [field, title] of [['attack', '攻擊'], ['hp', '生命']]) {
+      const value = doc.createElement('span'); value.className = `evolution-${field}`;
+      const small = doc.createElement('small'); small.textContent = title; value.append(small);
+      const old = doc.createElement('span'); old.className = 'evolution-before'; old.textContent = String(before[field]); value.append(old);
+      const arrow = doc.createElement('span'); arrow.className = 'evolution-arrow'; arrow.textContent = '→'; value.append(arrow);
+      const next = doc.createElement('b'); next.className = 'evolution-after'; next.textContent = String(after[field]); value.append(next);
+      values.append(value);
+    }
+    const note = doc.createElement('small'); note.className = 'evolution-note'; note.textContent = change.from === 0 ? '金卡完成，還可選一位免費夥伴' : change.to === 3 ? '傳說完成，能力已達最高進化' : '再融合一張同名普通卡，可進化傳說'; node.append(note);
+    const reveal = reducedMotion.matches ? 0 : 340;
+    const materials = change.from > 0 ? [target.uid, ...(change.consumedUids || [])] : change.consumedUids || [];
+    for (const uid of reducedMotion.matches ? [] : materials.slice(0, 3)) {
+      // A newly bought material has not occupied a board slot; its light enters from above.
+      const source = frame.entities.get(keyOf({ side: target.side, kind: 'card', uid })) || { rect: { left: left + width / 2, top: top - 42, width: 0, height: 0 } };
+      const mote = doc.createElement('i'); mote.className = 'evolution-mote'; node.append(mote);
+      const dx = source.rect.left + source.rect.width / 2 - left - width / 2;
+      const dy = source.rect.top + source.rect.height / 2 - top - 72;
+      motion(mote, [{ opacity: .9, transform: `translate(${dx}px,${dy}px) scale(1)` }, { opacity: 1, transform: 'translate(0,0) scale(.9)', offset: .86 }, { opacity: 0, transform: 'translate(0,0) scale(.9)' }], reveal, EASE_MOVE);
+    }
+    for (const part of [label, name, values, note]) {
+      part.style.opacity = reveal ? '0' : '1';
+      if (reveal) item.timers.push(later(() => {
+        part.style.opacity = '1';
+        motion(part, [{ opacity: 0, transform: 'translateY(7px) scale(.96)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], 200);
+      }, reveal));
+    }
+    if (!reducedMotion.matches) {
+      const flare = doc.createElement('i'); flare.className = 'evolution-flare'; node.append(flare);
+      item.timers.push(later(() => motion(flare, [{ opacity: 0, transform: 'scale(.9)' }, { opacity: .85, transform: 'scale(1.12)', offset: .25 }, { opacity: 0, transform: 'scale(1.3)' }], 360), reveal));
+    }
+    const duration = reducedMotion.matches ? 800 : 1380;
+    item.timers.push(later(() => motion(node, [{ opacity: 1 }, { opacity: 0 }], 160), duration - 160));
+    item.timers.push(later(() => remove(item), duration));
+    return duration;
   }
 
   function outline(entity, frame, kind, duration) {
@@ -335,16 +421,17 @@ export function createBattleEffects({ root }) {
       duration = IMPACT_MS;
     } else if (step.type === 'guard' || step.type === 'shield') {
       const blocked = changes.some(change => change.field === 'shield' && change.amount < 0);
-      const guard = popup(`${step.type === 'shield' ? blocked ? '護盾破裂' : '獲得護盾' : '守護承擋'}`, 'guard', target, beforeFrame, { life: 760 });
+      const guard = popup(`${step.type === 'shield' ? blocked ? '格擋' : '獲得護盾' : '守護承擋'}`, 'guard', target, beforeFrame, { life: 760 });
       if (guard && step.type === 'shield') guard.node.dataset.shieldState = blocked ? 'blocked' : 'gained';
       if (blocked) impact(target, beforeFrame, true);
       else outline(target, beforeFrame, 'guard', 350);
       speak(target, 'defend', beforeFrame);
       duration = blocked && chargeEndsAt > now() ? 0 : 250;
-    } else if (['summon', 'buy', 'reward', 'triple'].includes(step.type)) {
+    } else if (step.type === 'triple') {
+      duration = evolution(step, beforeFrame);
+    } else if (['summon', 'buy', 'reward'].includes(step.type)) {
       outline(target, beforeFrame, 'summon', 200);
       speak(target, 'summon', beforeFrame);
-      if (step.type === 'triple') popup('三合一・金卡！', 'buff', target, beforeFrame);
       duration = 200;
     } else if (step.type === 'death') {
       const element = anchor(target, beforeFrame)?.element;
@@ -355,12 +442,31 @@ export function createBattleEffects({ root }) {
       duration = 300;
     }
     let voices = 0;
+    const buffs = new Map();
+    if (step.type === 'buff') {
+      for (const change of changes) {
+        if (!change.amount || !['attack', 'maxHp', 'hp'].includes(change.field)) continue;
+        const key = keyOf(change.target);
+        if (!buffs.has(key)) buffs.set(key, { target: change.target, attack: 0, hp: 0, maxHp: 0 });
+        buffs.get(key)[change.field] += change.amount;
+      }
+      for (const buff of buffs.values()) {
+        const sign = value => `${value > 0 ? '+' : '−'}${Math.abs(value)}`;
+        const health = buff.maxHp || buff.hp;
+        const text = [buff.attack ? `攻擊 ${sign(buff.attack)}` : '', health ? `生命 ${sign(health)}` : ''].filter(Boolean).join('　');
+        popup(text, 'buff', buff.target, beforeFrame, { stats: { attack: buff.attack, hp: health } });
+        if (buff.attack) pulseStat(buff.target, 'attack', beforeFrame);
+        if (health) pulseStat(buff.target, 'hp', beforeFrame);
+      }
+      if (buffs.size) duration = Math.max(duration, 400);
+    }
     for (const change of changes) {
-      if (!change.amount) continue;
+      if (!change.amount || (step.type === 'buff' && ['attack', 'maxHp', 'hp'].includes(change.field))) continue;
       if (change.field === 'hp') {
         const hurt = change.amount < 0;
         popup(`${hurt ? '−' : '+'}${Math.abs(change.amount)}`, hurt ? 'damage' : 'heal', change.target, beforeFrame);
         outline(change.target, beforeFrame, hurt ? 'hit' : 'heal', 180);
+        pulseStat(change.target, 'hp', beforeFrame);
         if (hurt) {
           const element = anchor(change.target, beforeFrame)?.element;
           if (element && !reducedMotion.matches) motion(element, [
@@ -372,11 +478,8 @@ export function createBattleEffects({ root }) {
         duration = Math.max(duration, 520);
         if (hurt && change.target.kind === 'hero') impact(change.target, beforeFrame);
       } else if (change.field === 'gold') {
-        popup(`${change.amount < 0 ? '−' : '+'}${Math.abs(change.amount)} 金幣`, 'gold', change.target, beforeFrame, { energy: true });
+        popup(`${change.amount < 0 ? '−' : '+'}${Math.abs(change.amount)} 金`, 'gold', change.target, beforeFrame, { energy: true });
         duration = Math.max(duration, 160);
-      } else if (step.type === 'buff') {
-        popup(`${change.amount > 0 ? '+' : '−'}${Math.abs(change.amount)} ${change.field === 'attack' ? '攻擊' : '生命上限'}`, 'buff', change.target, beforeFrame);
-        duration = Math.max(duration, 180);
       }
     }
     return wait(duration);
@@ -402,7 +505,7 @@ export function createBattleEffects({ root }) {
       repositionFrame = null;
       const frame = capture();
       for (const item of items) {
-        if (['ghost', 'outline', 'burst'].includes(item.kind) ||
+        if (['ghost', 'outline', 'burst', 'evolution'].includes(item.kind) ||
           (item.entity.kind === 'card' && !frame.entities.has(keyOf(item.entity)))) remove(item);
         else position(item, frame);
       }

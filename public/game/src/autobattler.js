@@ -1,4 +1,4 @@
-import { CONFIG, ROSTER, TRAITS, getCharacter } from './roster.js';
+import { CONFIG, ROSTER, TRAITS, EVOLUTIONS, getCharacter, getEvolution, getEvolutionMultiplier } from './roster.js';
 import { ENCOUNTER_ROUNDS, getEncounterCard, getEncounterDefinition } from './encounters.js';
 
 const contexts = new WeakMap();
@@ -61,10 +61,10 @@ function recruitAction(state, run, allowReward = false) {
     run();
   });
 }
-function makeUnit(state, cardId, golden = false, fixedUid) {
+function makeUnit(state, cardId, evolution = 0, fixedUid) {
   const card = getCharacter(cardId);
-  const factor = golden ? 2 : 1;
-  return { uid: fixedUid || uid(state), cardId, golden, attack: card.attack * factor, hp: card.health * factor, maxHp: card.health * factor, shield: card.keywords.includes('shield') ? 1 : 0 };
+  const factor = EVOLUTIONS[evolution].multiplier;
+  return { uid: fixedUid || uid(state), cardId, evolution, golden: evolution > 0, attack: card.attack * factor, hp: card.health * factor, maxHp: card.health * factor, shield: card.keywords.includes('shield') ? 1 : 0 };
 }
 export function getSynergies(units) {
   return TRAITS.map(trait => {
@@ -94,7 +94,7 @@ function makeOpponent(state) {
     const focused = pool.filter(card => card.faction === focus);
     const card = pick(focused.length && random(source) < 0.65 ? focused : pool, source);
     used.add(card.id);
-    const unit = makeUnit(state, card.id, false, `enemy-${state.round}-${index}`);
+    const unit = makeUnit(state, card.id, 0, `enemy-${state.round}-${index}`);
     unit.attack += bonus;
     unit.hp += bonus;
     unit.maxHp += bonus;
@@ -119,44 +119,58 @@ function spend(state, amount) {
   return delta(entity(state, 'player'), state.player, 'gold', state.player.gold - amount);
 }
 const owned = state => [...state.player.board, ...state.player.bench];
-function mergeTriple(state, cardId, changes) {
-  const matches = owned(state).filter(unit => unit.cardId === cardId && !unit.golden);
-  if (matches.length < 3) return;
-  const merging = matches.slice(0, 3);
-  const first = merging[0];
+export function getEvolutionOffer(state, cardId) {
+  if (!ROSTER.some(card => card.id === cardId)) return null;
+  const matches = owned(state).filter(unit => unit.cardId === cardId);
+  const target = matches.filter(unit => getEvolution(unit) > 0 && getEvolution(unit) < 3).sort((a, b) => getEvolution(b) - getEvolution(a))[0];
+  if (target) return { from: getEvolution(target), to: getEvolution(target) + 1, targetUid: target.uid, materialUids: [] };
+  const ordinary = matches.filter(unit => getEvolution(unit) === 0);
+  return ordinary.length >= 2 ? { from: 0, to: 1, targetUid: ordinary[0].uid, materialUids: ordinary.slice(0, 2).map(unit => unit.uid) } : null;
+}
+function mergeEvolution(state, incoming, evolution, changes) {
+  if (!evolution) return;
+  const { cardId } = incoming;
+  const first = owned(state).find(unit => unit.uid === evolution.targetUid);
+  const merging = evolution.from ? [first, incoming] : [...owned(state).filter(unit => evolution.materialUids.includes(unit.uid)), incoming];
   const zone = state.player.board.includes(first) ? 'board' : 'bench';
   const index = state.player[zone].indexOf(first);
   const card = getCharacter(cardId);
-  const bonusAttack = merging.reduce((sum, unit) => sum + unit.attack - card.attack, 0);
-  const bonusHealth = merging.reduce((sum, unit) => sum + unit.maxHp - card.health, 0);
+  const before = { attack: first.attack, hp: first.hp, maxHp: first.maxHp };
+  const bonusAttack = merging.reduce((sum, unit) => sum + unit.attack - card.attack * getEvolutionMultiplier(unit), 0);
+  const bonusHealth = merging.reduce((sum, unit) => sum + unit.maxHp - card.health * getEvolutionMultiplier(unit), 0);
+  const evolved = makeUnit(state, cardId, evolution.to, evolution.from ? first.uid : undefined);
+  evolved.attack += bonusAttack;
+  evolved.hp += bonusHealth;
+  evolved.maxHp += bonusHealth;
+  requireRule(evolved.attack > 0 && evolved.attack <= 10000 && evolved.hp > 0 && evolved.hp <= 10000, '角色數值已達上限，無法進化。');
   const ids = new Set(merging.map(unit => unit.uid));
   for (const key of ['board', 'bench']) state.player[key] = state.player[key].filter(unit => !ids.has(unit.uid));
-  const golden = makeUnit(state, cardId, true);
-  golden.attack += bonusAttack;
-  golden.hp += bonusHealth;
-  golden.maxHp += bonusHealth;
-  state.player[zone].splice(Math.min(index, state.player[zone].length), 0, golden);
-  const pool = ROSTER.filter(card => card.tier === Math.min(4, state.player.tier + 1));
-  const choices = [];
-  while (choices.length < 3) {
-    const card = pick(pool.filter(card => !choices.includes(card.id)), state);
-    choices.push(card.id);
+  state.player[zone].splice(Math.min(index, state.player[zone].length), 0, evolved);
+  if (evolution.to === 1) {
+    const pool = ROSTER.filter(card => card.tier === Math.min(4, state.player.tier + 1));
+    const choices = [];
+    while (choices.length < 3) {
+      const card = pick(pool.filter(card => !choices.includes(card.id)), state);
+      choices.push(card.id);
+    }
+    state.pendingReward = { choices };
   }
-  state.pendingReward = { choices };
-  note(state, `${card.region}三合一升金！選擇一位免費援軍。`);
-  emit(state, 'triple', 'player', { actor: entity(state, 'player', golden, zone), target: entity(state, 'player', golden, zone), changes });
-  return { unit: golden, zone, merged: true };
+  note(state, evolution.to === 1 ? `${card.region}三合一升金！選擇一位免費援軍。` : `${card.region}進化為${EVOLUTIONS[evolution.to].name}！攻血與技能數值提升至${EVOLUTIONS[evolution.to].multiplier}倍。`);
+  emit(state, 'triple', 'player', { actor: entity(state, 'player', evolved, zone), target: entity(state, 'player', evolved, zone), changes,
+    evolution: { from: evolution.from, to: evolution.to, consumedUids: [...ids].filter(id => id !== evolved.uid), before, after: { attack: evolved.attack, hp: evolved.hp, maxHp: evolved.maxHp } } });
+  return { unit: evolved, zone, merged: true };
 }
 export function canReceiveUnit(state, cardId) {
-  return state.player.bench.length < CONFIG.benchSize || owned(state).filter(unit => unit.cardId === cardId && !unit.golden).length >= 2;
+  return ROSTER.some(card => card.id === cardId) && (state.player.bench.length < CONFIG.benchSize || Boolean(getEvolutionOffer(state, cardId)));
 }
 function addOwned(state, cardId, changes = []) {
   requireRule(ROSTER.some(card => card.id === cardId), '小怪無法招募或加入隊伍。');
-  requireRule(canReceiveUnit(state, cardId), '備戰區已滿，請先上場、出售角色，或招募可三合一的角色。');
+  requireRule(canReceiveUnit(state, cardId), '手牌已滿，請先上場、出售角色，或招募可合成進化的角色。');
+  const evolution = getEvolutionOffer(state, cardId);
   const zone = 'bench';
   const unit = makeUnit(state, cardId);
   state.player[zone].push(unit);
-  return mergeTriple(state, cardId, changes) || { unit, zone, merged: false };
+  return mergeEvolution(state, unit, evolution, changes) || { unit, zone, merged: false };
 }
 export function buy(state, shopUid) {
   return recruitAction(state, () => {
@@ -288,7 +302,7 @@ function clearDead(state) {
     if (!deaths.length) return;
     for (const { side, unit, actor, index } of deaths) {
       const card = getCharacter(unit.cardId);
-      const factor = unit.golden ? 2 : 1;
+      const factor = getEvolutionMultiplier(unit);
       const allies = state.combat[side];
       const enemies = state.combat[other(side)];
       const traits = state.combat.traits[side];
@@ -302,7 +316,7 @@ function clearDead(state) {
       if (card.ability === 'deathBlast' || card.ability === 'deathWave') damage(state, side, enemies.map(target => ({ side: other(side), unit: target, amount })), actor);
       if (card.ability === 'deathThrow' && enemies.some(unit => unit.hp > 0)) damage(state, side, [{ side: other(side), unit: pick(enemies.filter(unit => unit.hp > 0), state.combat), amount }], actor);
       if (card.ability === 'puppet' && allies.length < CONFIG.boardSize) {
-        const puppet = makeUnit(state, 101, unit.golden);
+        const puppet = makeUnit(state, 101, getEvolution(unit));
         puppet.order = unit.order + 0.1;
         puppet.attacks = 0;
         allies.splice(Math.min(index, allies.length), 0, puppet);
@@ -314,7 +328,7 @@ function clearDead(state) {
 function applyStart(state, side, unit) {
   if (unit.hp <= 0) return;
   const card = getCharacter(unit.cardId);
-  const factor = unit.golden ? 2 : 1;
+  const factor = getEvolutionMultiplier(unit);
   const allies = state.combat[side];
   const enemies = state.combat[other(side)];
   const actor = entity(state, side, unit);
@@ -345,7 +359,7 @@ function attackOnce(state, side, unit) {
   const target = pick(guards.length ? guards : enemies, state.combat);
   const neighbors = adjacent(enemies, target);
   const card = getCharacter(unit.cardId);
-  const factor = unit.golden ? 2 : 1;
+  const factor = getEvolutionMultiplier(unit);
   const amount = CONFIG.abilityValues[card.ability] * factor;
   const actor = entity(state, side, unit);
   const targetEntity = entity(state, other(side), target);
@@ -496,6 +510,7 @@ export function validateRun(state) {
       seen.add(unit.uid);
       requireRule(ROSTER.some(card => card.id === unit.cardId) || allowToken && unit.cardId === 101 || allowMonster && Boolean(getEncounterCard(unit.cardId)), '未知角色。');
       requireRule(typeof unit.golden === 'boolean' && number(unit.attack, 1, 10000) && number(unit.hp, 0, 10000) && number(unit.maxHp, 1, 10000) && unit.hp <= unit.maxHp && [0, 1].includes(unit.shield), '角色數值無效。');
+      requireRule((unit.evolution === undefined || number(unit.evolution, 0, 3)) && unit.golden === (getEvolution(unit) > 0), '角色進化階級無效。');
     };
     for (const [zone, cap] of [['board', CONFIG.boardSize], ['bench', CONFIG.benchSize]]) {
       requireRule(Array.isArray(p[zone]) && p[zone].length <= cap, '角色容量無效。');

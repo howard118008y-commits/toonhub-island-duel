@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createBattleEffects } from '../public/game/src/effects.js';
-import { createRun, startCombat } from '../public/game/src/autobattler.js';
+import { createRun, startCombat, buy, chooseTripleReward } from '../public/game/src/autobattler.js';
+import { getCharacter } from '../public/game/src/roster.js';
 
 function scene() {
   let time = 0, timerId = 0, reduced = false, animationMode = 'normal';
@@ -204,4 +205,158 @@ test('damage follows the surviving UID when another unit leaves its earlier boar
   assert(h.layer.children.includes(popup), 'a live unit keeps its damage message');
   assert.equal(popup.style.left, '20.5px', 'damage anchors to the surviving UID at its new location');
   h.fx.cancel(); await pending; await h.flush(); h.clean();
+});
+
+test('impact numbers stay at their own card centre instead of yielding to speech or a prior hit', async () => {
+  const h = scene(); h.card.rect = { ...h.card.rect, top: 0 };
+  const shield = h.fx.play({ type: 'shield', target: h.actor, changes: [{ target: h.actor, field: 'shield', amount: 1 }] });
+  const hit = h.fx.play(h.damage);
+  const first = h.layer.children.find(node => node.dataset.effect === 'damage'); assert(first);
+  const expected = { left: '20.5px', top: '37.5px' };
+  assert.equal(first.style.left, expected.left); assert.equal(first.style.top, expected.top);
+  await h.advance(520); await Promise.all([shield, hit]);
+  const next = h.fx.play({ ...h.damage, changes: [{ target: h.actor, field: 'hp', before: 5, after: 3, amount: -2 }] });
+  const damage = h.layer.children.filter(node => node.dataset.effect === 'damage');
+  assert.equal(damage.length, 1); assert.equal(damage[0].textContent, '−2'); assert(!h.layer.children.includes(first));
+  assert.equal(damage[0].style.left, expected.left); assert.equal(damage[0].style.top, expected.top);
+  for (const speech of h.layer.children.filter(node => node.dataset.effect === 'speech')) {
+    const overlaps = Number.parseFloat(speech.style.left) < 80.5 && Number.parseFloat(speech.style.left) + speech.offsetWidth > 20.5 && Number.parseFloat(speech.style.top) < 77.5 && Number.parseFloat(speech.style.top) + speech.offsetHeight > 37.5;
+    assert.equal(overlaps, false, 'speech never covers the central damage number');
+  }
+  h.fx.cancel(); await next; await h.flush(); h.clean();
+});
+
+test('gold changes remain above the real coin balance and cancel releases their presentation', async () => {
+  const h = scene(), hero = h.card.cloneNode(), coin = h.card.cloneNode();
+  coin.rect = { left: 140, top: 560, width: 72, height: 34 };
+  h.root.selectors.set('[data-hero="player"]', hero);
+  h.root.selectors.set('[data-gold="player"]', coin);
+  const pending = h.fx.play({ type: 'buy', actor: h.actor, changes: [
+    { target: { side: 'player', kind: 'hero' }, field: 'gold', before: 15, after: 12, amount: -3 },
+  ] }, h.fx.capture());
+  const popup = h.layer.children.find(node => node.dataset.effect === 'gold');
+  assert(popup); assert.equal(popup.textContent, '−3 金');
+  assert(Number.parseFloat(popup.style.top) + popup.offsetHeight <= coin.rect.top - 8, 'gold badge must leave the balance unobscured');
+  assert(h.records.filter(record => record.element === popup).every(record => record.frames.every(frame => !frame.transform)), 'gold uses opacity without enlarging across the balance');
+  h.fx.cancel(); await pending; await h.flush(); h.clean();
+  await h.advance(1500); h.clean();
+});
+
+test('one buff combines attack and health without duplicate healing or max-health numbers', async () => {
+  const h = scene();
+  const pending = h.fx.play({ type: 'buff', actor: h.actor, target: h.actor, changes: [
+    { target: h.actor, field: 'attack', before: 3, after: 5, amount: 2 },
+    { target: h.actor, field: 'maxHp', before: 8, after: 11, amount: 3 },
+    { target: h.actor, field: 'hp', before: 8, after: 11, amount: 3 },
+  ] });
+  const buffs = h.layer.children.filter(node => node.dataset.effect === 'buff');
+  assert.equal(buffs.length, 1); assert.match(buffs[0].textContent, /攻擊 \+2/); assert.match(buffs[0].textContent, /生命 \+3/);
+  assert.equal(h.layer.children.filter(node => node.dataset.effect === 'heal').length, 0);
+  await h.advance(400); await pending; h.fx.cancel(); await h.flush(); h.clean();
+});
+
+test('five simultaneous buffs retain distinct UID anchors and each compact badge fits its card width', async () => {
+  const h = scene(), board = h.root.querySelector('.player-board'), template = h.card;
+  board.children = []; const changes = [];
+  for (let slot = 0; slot < 5; slot++) {
+    const card = template.cloneNode(); card.dataset.cardUid = `ally-${slot}`;
+    card.rect = { left: 12 + slot * 70, top: 350, width: 64, height: 135 }; board.append(card);
+    const target = { ...h.actor, uid: card.dataset.cardUid, slot };
+    changes.push({ target, field: 'attack', amount: 2 }, { target, field: 'maxHp', amount: 3 }, { target, field: 'hp', amount: 3 });
+  }
+  const pending = h.fx.play({ type: 'buff', actor: changes[0].target, changes });
+  const buffs = h.layer.children.filter(node => node.dataset.effect === 'buff'); assert.equal(buffs.length, 5);
+  assert.equal(new Set(buffs.map(node => node.dataset.effectUid)).size, 5);
+  for (const popup of buffs) {
+    const card = board.children.find(node => node.dataset.cardUid === popup.dataset.effectUid);
+    assert(Number.parseFloat(popup.style.width) <= card.rect.width);
+    assert.equal(popup.dataset.buffAttack, '+2 攻'); assert.equal(popup.dataset.buffHealth, '+3 血');
+    assert.match(popup.textContent, /攻擊 \+2/); assert.match(popup.textContent, /生命 \+3/);
+  }
+  const ordered = buffs.toSorted((a, b) => Number.parseFloat(a.style.left) - Number.parseFloat(b.style.left));
+  for (let index = 1; index < ordered.length; index++) assert(Number.parseFloat(ordered[index - 1].style.left) + Number.parseFloat(ordered[index - 1].style.width) <= Number.parseFloat(ordered[index].style.left));
+  h.fx.cancel(); await pending; await h.flush(); h.clean();
+});
+
+test('simultaneous retaliation stays separated on the two original UID anchors while the attacker ghost touches its target', async () => {
+  const h = scene(), attack = h.fx.play(h.attack); await h.advance(350); await attack;
+  assert(h.layer.children.some(node => node.dataset.effect === 'attack'), 'the moving attacker still exists at contact');
+  const damage = h.fx.play({ type: 'damage', actor: h.actor, target: h.target, changes: [
+    { target: h.actor, field: 'hp', before: 8, after: 5, amount: -3 },
+    { target: h.target, field: 'hp', before: 8, after: 4, amount: -4 },
+  ] }, h.fx.capture());
+  const popups = h.layer.children.filter(node => node.dataset.effect === 'damage'); assert.equal(popups.length, 2);
+  const own = popups.find(node => node.dataset.effectUid === h.actor.uid), enemy = popups.find(node => node.dataset.effectUid === h.target.uid);
+  assert.equal(own.textContent, '−3'); assert.equal(enemy.textContent, '−4');
+  assert.equal(Number.parseFloat(own.style.top) - Number.parseFloat(enemy.style.top), 220);
+  assert.equal(own.style.left, enemy.style.left);
+  assert(Number.parseFloat(enemy.style.top) + enemy.offsetHeight < Number.parseFloat(own.style.top));
+  h.fx.cancel(); await damage; await h.flush(); h.clean();
+});
+
+test('a broken shield, a later hit and healing share one central value channel on the same UID', async () => {
+  const h = scene();
+  const shield = h.fx.play({ type: 'shield', target: h.actor, changes: [{ target: h.actor, field: 'shield', amount: -1 }] });
+  assert(h.layer.children.some(node => node.dataset.effect === 'guard' && node.className.includes('battle-fx-popup')));
+  const hit = h.fx.play(h.damage);
+  assert.equal(h.layer.children.filter(node => node.dataset.effect === 'guard' && node.className.includes('battle-fx-popup')).length, 0, 'real HP damage replaces the old shield label');
+  await h.advance(520); await Promise.all([shield, hit]);
+  const pending = h.fx.play({ type: 'heal', actor: h.actor, changes: [{ target: h.actor, field: 'hp', before: 5, after: 7, amount: 2 }] });
+  const numbers = h.layer.children.filter(node => ['damage', 'heal', 'buff', 'guard'].includes(node.dataset.effect) && node.dataset.effectUid === h.actor.uid);
+  assert.equal(numbers.length, 1, 'sequential effects on one UID must remain readable'); assert.equal(numbers[0].textContent, '+2');
+  h.fx.cancel(); await pending; await h.flush(); h.clean();
+});
+
+function evolutionEvents() {
+  const state = createRun({ seed: 1209 }); state.player.gold = 30;
+  const card = getCharacter(1);
+  const unit = () => ({ uid: `u-${state.nextUid++}`, cardId: card.id, golden: false, evolution: 0, attack: card.attack, hp: card.health, maxHp: card.health, shield: 0 });
+  state.player.board = [unit(), unit()];
+  const events = [];
+  for (let rank = 1; rank <= 3; rank++) {
+    const offer = { uid: `u-${state.nextUid++}`, cardId: card.id }; state.shop.offers = [offer];
+    const result = buy(state, offer.uid); assert(result.ok);
+    events.push(result.timeline.find(step => step.type === 'triple'));
+    if (state.pendingReward) assert(chooseTripleReward(state, state.pendingReward.choices[0]).ok);
+  }
+  return events;
+}
+function effectDescendants(node) { return node.children.flatMap(child => [child, ...effectDescendants(child)]); }
+
+test('real gold, epic and legendary events reveal their true before/after values and release the complete presentation', async () => {
+  const events = evolutionEvents();
+  for (const [index, event] of events.entries()) {
+    const h = scene(); h.card.dataset.cardUid = event.evolution.consumedUids[0]; const frame = h.fx.capture();
+    h.card.dataset.cardUid = event.target.uid;
+    let finished = false; const pending = h.fx.play(event, frame).then(() => { finished = true; });
+    const stage = h.layer.children.find(node => node.dataset.effect === 'evolution'); assert(stage);
+    assert.equal(stage.dataset.evolution, String(index + 1));
+    const parts = effectDescendants(stage);
+    assert.equal(parts.filter(node => node.className === 'evolution-mote').length, index === 0 ? 3 : 2, 'newly bought materials still contribute a flight when they had no prior DOM card');
+    assert(parts.some(node => node.className === 'evolution-name' && node.textContent.includes(['金卡', '紫卡', '傳說'][index])));
+    for (const field of ['attack', 'hp']) {
+      const line = parts.find(node => node.className === `evolution-${field}`);
+      assert.equal(line.children.find(node => node.className === 'evolution-before').textContent, String(event.evolution.before[field]));
+      assert.equal(line.children.find(node => node.className === 'evolution-after').textContent, String(event.evolution.after[field]));
+    }
+    const note = parts.find(node => node.className === 'evolution-note').textContent;
+    assert.equal(note.includes('免費夥伴'), index === 0, 'higher evolutions cannot advertise another reward');
+    await h.advance(1000); assert.equal(finished, false); await h.advance(400); await pending; h.clean();
+  }
+});
+
+test('cancel during material flight and reduced-motion evolution never retain overlays, animations or waiters', async () => {
+  const event = evolutionEvents()[0];
+  for (const reduce of [false, true]) {
+    const h = scene(); h.reduced = reduce;
+    h.card.dataset.cardUid = event.evolution.consumedUids[0]; const frame = h.fx.capture(); h.card.dataset.cardUid = event.target.uid;
+    const pending = h.fx.play(event, frame);
+    const stage = h.layer.children.find(node => node.dataset.effect === 'evolution'); assert(stage);
+    if (reduce) assert.equal(effectDescendants(stage).filter(node => node.className === 'evolution-mote' || node.className === 'evolution-flare').length, 0);
+    const dequeued = [...h.timers.values()].map(timer => timer.fn);
+    await h.advance(200); h.fx.cancel(); await pending; await h.flush(); h.clean();
+    for (const callback of dequeued) callback();
+    await h.flush(); h.clean();
+    await h.advance(2000); h.clean();
+  }
 });

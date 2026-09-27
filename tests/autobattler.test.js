@@ -39,13 +39,13 @@ test('shop rerolls cannot change the opponent or combat randomness',()=>{
  startCombat(a,{recordTimeline:false});startCombat(b,{recordTimeline:false});assert.deepEqual(a.combat,b.combat);assert.deepEqual(a.result,b.result);
 });
 
-test('full capacity purchase can merge board + bench, but gold cards are excluded',()=>{
+test('full capacity purchase merges board + bench, then a golden card can evolve without another reward',()=>{
  const s=createRun({seed:5});s.player.gold=3;s.player.board=[unit(s,3),unit(s,4),unit(s,5),unit(s,6),unit(s,7)];s.player.bench=[unit(s,3),unit(s,8),unit(s,9)];
  const purchase=buy(s,offer(s,3));assert(purchase.ok);assert.equal(s.player.gold,0);assert.equal([...s.player.board,...s.player.bench].length,7);
  assert.equal(purchase.timeline.length,1);assert.equal(purchase.timeline[0].type,'triple');assert.equal(purchase.timeline[0].changes[0].amount,-3);assert(purchase.timeline[0].target.slot>=0);assert(purchase.timeline[0].snapshot.player.bench.length<=3);
  const golden=[...s.player.board,...s.player.bench].find(x=>x.cardId===3);assert(golden.golden);assert.equal(golden.attack,getCharacter(3).attack*2);assert.equal(golden.hp,getCharacter(3).health*2);assert.equal(s.pendingReward.choices.length,3);
  failedUnchanged(s,()=>refreshShop(s));failedUnchanged(s,()=>chooseTripleReward(s,999));assert(chooseTripleReward(s,s.pendingReward.choices[0]).ok);assert.equal([...s.player.board,...s.player.bench].length,8);assert.equal(validateRun(s).ok,true);
- s.player.gold=3;const missing=offer(s,3);failedUnchanged(s,()=>buy(s,missing));
+ s.player.gold=3;assert(buy(s,offer(s,3)).ok);assert.equal(s.player.board[0].evolution,2);assert.equal(s.pendingReward,null);assert.equal([...s.player.board,...s.player.bench].length,8);assert.equal(validateRun(s).ok,true);
 });
 
 test('full boards swap across zones, reorder within a zone, and reject invalid capacity',()=>{
