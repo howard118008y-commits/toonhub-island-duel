@@ -4,6 +4,7 @@ import { loadRun, saveRun, clearRun } from './storage.js';
 import { createBattleEffects } from './effects.js';
 import { installThemeBridge } from './theme.js';
 import { CHARACTER_STORIES, CHARACTER_STORY_NOTE } from './character-stories.js';
+import { getGuideAdvice } from './guide-advisor.js';
 
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#game-dialog');
@@ -29,6 +30,15 @@ let inspectorTarget = null;
 let inspectorPinned = false;
 let inspectorOpen = false;
 let inspectorReturnFocus = '';
+const GUIDE_PREFERENCE_KEY = 'taika-guide-enabled-v1';
+let guideEnabled = loadGuidePreference();
+let guideTimer = null;
+let guideGeneration = 0;
+let guideVisible = false;
+let guideDismissed = false;
+let guideTarget = null;
+let guideScene = '';
+let guidePointer = null;
 let saveMessage = loaded.status === 'restored' ? '已接續本機冒險' : loaded.status === 'empty' ? '進度儲存在此瀏覽器' : loaded.message;
 let saveFailed = ['invalid', 'unavailable'].includes(loaded.status);
 let message = loaded.status === 'restored' ? `已接續第 ${run.round} 輪，歡迎回來。` : loaded.status === 'empty' ? '先招募一位角色，再編排你的主場。' : loaded.message;
@@ -99,7 +109,7 @@ function openingView() {
 }
 function lobbyView() {
   const ongoing = adventureStarted && run.phase !== 'gameover';
-  return `<main class="taika-lobby framework-lobby"><div class="lobby-cabinet"><div class="cabinet-corner corner-tl"></div><div class="cabinet-corner corner-tr"></div><div class="cabinet-corner corner-bl"></div><div class="cabinet-corner corner-br"></div><header class="cabinet-title"><span class="lobby-seal" aria-hidden="true">台</span><h1>台灣卡牌<small>台卡</small></h1><span class="cabinet-stamp">島嶼旅店</span></header><div class="cabinet-inset"><p class="cabinet-welcome">${ongoing ? `第 ${run.round} 輪 · ${Math.max(0,run.player.hp)} 生命 · 隊伍 ${getSquadLevel(run.player.xp || 0)} 級` : '招募 24 位地域夥伴，挑戰十輪冒險'}</p><button class="cabinet-mode primary-button" data-action="${ongoing ? 'continue' : 'new-run'}" data-focus="primary"><span class="mode-medal" aria-hidden="true">${icon('sword')}</span><span><strong>${ongoing ? '繼續冒險' : '島嶼冒險'}</strong><small>${ongoing ? '接續這個瀏覽器的進度' : '單機旅店 · 招募與自動對戰'}</small></span>${icon('arrow')}</button><div class="cabinet-tabs"><button class="cabinet-tab" data-action="collection">${icon('star')}<span>角色圖鑑<small>24 位地域夥伴</small></span></button><button class="cabinet-tab" data-action="rules">${icon('info')}<span>旅人指南<small>招募・排陣・開戰</small></span></button></div>${ongoing ? '<button class="lobby-new" data-action="restart">另開一場冒險</button>' : '<p class="cabinet-note">沒有倒數，準備好了再開戰。</p>'}</div><footer class="cabinet-footer"><span>${esc(saveFailed ? saveMessage : '免費單機 · 進度儲存在此瀏覽器')}</span><span aria-hidden="true">✦</span></footer></div><p class="cabinet-caption">打出你的個性，守住你的主場。</p></main>`;
+  return `<main class="taika-lobby framework-lobby"><div class="lobby-cabinet"><div class="cabinet-corner corner-tl"></div><div class="cabinet-corner corner-tr"></div><div class="cabinet-corner corner-bl"></div><div class="cabinet-corner corner-br"></div><header class="cabinet-title"><span class="lobby-seal" aria-hidden="true">台</span><h1>台灣卡牌<small>台卡</small></h1><span class="cabinet-stamp">島嶼旅店</span></header><div class="cabinet-inset"><p class="cabinet-welcome">${ongoing ? `第 ${run.round} 輪 · ${Math.max(0,run.player.hp)} 生命 · 隊伍 ${getSquadLevel(run.player.xp || 0)} 級` : '招募 24 位地域夥伴，挑戰十輪冒險'}</p><button class="cabinet-mode primary-button" data-action="${ongoing ? 'continue' : 'new-run'}" data-focus="primary"><span class="mode-medal" aria-hidden="true">${icon('sword')}</span><span><strong>${ongoing ? '繼續冒險' : '島嶼冒險'}</strong><small>${ongoing ? '接續這個瀏覽器的進度' : '單機旅店 · 招募與自動對戰'}</small></span>${icon('arrow')}</button><div class="cabinet-tabs"><button class="cabinet-tab" data-action="collection">${icon('star')}<span>角色圖鑑<small>24 位地域夥伴</small></span></button><button class="cabinet-tab" data-action="rules">${icon('info')}<span>旅人指南<small>招募・排陣・開戰</small></span></button></div>${ongoing ? '<button class="lobby-new" data-action="restart">另開一場冒險</button>' : '<p class="cabinet-note">沒有倒數，準備好了再開戰。</p>'}</div><footer class="cabinet-footer"><span>${esc(saveFailed ? saveMessage : '免費單機 · 進度儲存在此瀏覽器')}</span>${guideToggle()}</footer></div><p class="cabinet-caption">打出你的個性，守住你的主場。</p></main>`;
 }
 function collection() {
   openModal(`<div class="lobby-collection"><span class="overline">24 個地區 · 24 種個性</span><h2 id="dialog-title">找到你的主場夥伴</h2><p>點角色看台詞與技能。角色在旅店招募，圖鑑不代表本局已擁有。</p><div class="collection-roster">${ROSTER.map(card => `<button data-action="inspect" data-id="${card.id}" data-inspect-card="${card.id}" data-inspect-source="catalog"><img src="${imageUrl(card.id)}" alt="" width="90" height="135" loading="lazy"><strong>${esc(card.region)}</strong><span>${esc(card.job)}</span></button>`).join('')}</div></div>`);
@@ -111,7 +121,7 @@ function encounterDetails() {
 }
 
 function hud() {
-  return `<header class="run-hud"><div class="run-progress"><span class="overline">台卡 · 島嶼冒險</span><strong>第 ${shown.round}<span>／${CONFIG.rounds} 輪</span></strong></div><div class="hero-player player" data-hero="player"><div class="hero-health">${icon('heart')}<b>${Math.max(0, shown.player.hp)}</b><span>生命</span></div><div class="gold-display" data-gold="player">${icon('coin')}<b>${shown.player.gold}</b><span>金幣</span></div></div><span class="squad-level" title="2經驗升2級，3經驗升3級"><b>隊伍 ${getSquadLevel(shown.player.xp || 0)} 級</b><small>${shown.player.xp || 0}／3 經驗</small></span><nav class="utility-actions" aria-label="遊戲選單"><button class="icon-button" data-action="lobby" data-focus="lobby" aria-label="返回台卡大廳">大廳</button><button class="icon-button" data-action="rules" data-focus="rules" aria-label="玩法說明">${icon('info')}<span>玩法</span></button></nav></header><div class="save-line ${saveFailed ? 'save-failed' : ''}"><span>${saveFailed ? '⚠' : '✓'} ${esc(saveMessage)}</span><span>${saveFailed ? '重新整理可能遺失本次進度' : '僅此瀏覽器・此裝置'}</span></div>`;
+  return `<header class="run-hud"><div class="run-progress"><span class="overline">台卡 · 島嶼冒險</span><strong>第 ${shown.round}<span>／${CONFIG.rounds} 輪</span></strong></div><div class="hero-player player" data-hero="player"><div class="hero-health">${icon('heart')}<b>${Math.max(0, shown.player.hp)}</b><span>生命</span></div><div class="gold-display" data-gold="player">${icon('coin')}<b>${shown.player.gold}</b><span>金幣</span></div></div><span class="squad-level" title="2經驗升2級，3經驗升3級"><b>隊伍 ${getSquadLevel(shown.player.xp || 0)} 級</b><small>${shown.player.xp || 0}／3 經驗</small></span><nav class="utility-actions" aria-label="遊戲選單">${guideToggle()}<button class="icon-button" data-action="lobby" data-focus="lobby" aria-label="返回台卡大廳">大廳</button><button class="icon-button" data-action="rules" data-focus="rules" aria-label="玩法說明">${icon('info')}<span>玩法</span></button></nav></header><div class="save-line ${saveFailed ? 'save-failed' : ''}"><span>${saveFailed ? '⚠' : '✓'} ${esc(saveMessage)}</span><span>${saveFailed ? '重新整理可能遺失本次進度' : '僅此瀏覽器・此裝置'}</span></div>`;
 }
 
 function shopView() {
@@ -180,17 +190,22 @@ function resultView() {
 }
 
 function render(preferredFocus = focusKey()) {
+  cancelGuide();
+  const nextGuideScene = `${screen}:${shown.phase}:${shown.round}`;
+  if (nextGuideScene !== guideScene) guideDismissed = false;
+  guideScene = nextGuideScene;
   if (screen !== 'run') {
     resetInspector();
-    app.innerHTML = screen === 'opening' ? openingView() : lobbyView();
+    app.innerHTML = (screen === 'opening' ? openingView() : lobbyView()) + guideMount(true);
     if (preferredFocus) restoreFocus(preferredFocus);
+    armGuide();
     return;
   }
   const inspectorReading = captureInspectorReading();
   const rails = [...app.querySelectorAll('.card-rail')].map(node => [node.className, node.scrollLeft]);
   const combat = shown.phase === 'combat' || (busy && run.phase !== 'recruit');
   const phase = combat ? 'combat' : shown.phase;
-  app.innerHTML = `<div class="game-with-inspector"><div class="autobattler table-framework ${selectedUid ? 'has-selected' : ''} ${combat ? 'in-combat' : shown.phase === 'recruit' ? 'in-tavern' : ''}">${hud()}<p class="feedback-line">${esc(message)}</p>${combat ? combatView() : shown.phase === 'recruit' ? recruitView() : resultView()}</div>${inspectorView()}</div>`;
+  app.innerHTML = `<div class="game-with-inspector"><div class="autobattler table-framework ${selectedUid ? 'has-selected' : ''} ${combat ? 'in-combat' : shown.phase === 'recruit' ? 'in-tavern' : ''}">${hud()}<p class="feedback-line"><span class="feedback-message">${esc(message)}</span>${guideMount()}</p>${combat ? combatView() : shown.phase === 'recruit' ? recruitView() : resultView()}</div>${inspectorView()}</div>`;
   restoreInspectorReading(inspectorReading);
   for (const [classes, left] of rails) [...app.querySelectorAll('.card-rail')].find(node => node.className === classes)?.scrollTo({ left, behavior: 'instant' });
   if (renderedPhase && renderedPhase !== phase) window.scrollTo({ top: 0, behavior: 'instant' });
@@ -203,6 +218,7 @@ function render(preferredFocus = focusKey()) {
     cancelEffects();
   }
   if (preferredFocus) restoreFocus(preferredFocus);
+  armGuide();
 }
 
 function updateShopControls() {
@@ -311,6 +327,7 @@ function openModal(content) {
   returnFocus = focusKey();
   dialog.innerHTML = `<button class="dialog-close icon-button" data-action="close-dialog" aria-label="關閉對話框">${icon('close')}</button>${content}`;
   if (!dialog.open) dialog.showModal();
+  cancelGuide();
 }
 function resetInspector() { inspectorTarget = null; inspectorPinned = false; inspectorOpen = false; inspectorReturnFocus = ''; }
 function inspectorDescriptor(id, uid, source, offerUid) {
@@ -386,6 +403,7 @@ function updateInspector() {
   panel.classList.toggle('is-open', inspectorOpen);
   const pin = panel.querySelector('[data-action="inspector-pin"]');
   if (pin) { pin.textContent = inspectorPinned ? '解除固定' : '固定這張'; pin.disabled = !inspectorTarget; pin.setAttribute('aria-pressed', String(inspectorPinned)); }
+  syncGuideAvailability();
 }
 function previewCard(target, pin = false) {
   if (!getCharacter(target.cardId) || screen !== 'run' || pointerDrag?.started || (!pin && inspectorPinned)) return;
@@ -435,6 +453,14 @@ document.addEventListener('click', event => {
   const button = event.target.closest('[data-action]');
   if (!button || button.disabled) return;
   const action = button.dataset.action;
+  if (action === 'guide-toggle') {
+    guideEnabled = !guideEnabled;
+    try { localStorage.setItem(GUIDE_PREFERENCE_KEY, guideEnabled ? 'on' : 'off'); } catch {}
+    guideDismissed = false;
+    app.querySelectorAll('[data-action="guide-toggle"]').forEach(toggle => { toggle.textContent = `引導${guideEnabled ? '開' : '關'}`; toggle.setAttribute('aria-pressed', String(guideEnabled)); });
+    cancelGuide(); armGuide(); return;
+  }
+  if (action === 'guide-dismiss') { dismissGuide(); return; }
   if (action === 'open-chest') {
     if (screen !== 'opening' || chestOpening) return;
     chestOpening = true;
@@ -546,6 +572,7 @@ app.addEventListener('pointerdown', event => {
   if (!source || face.disabled) return;
   const kind = source.dataset.dragOffer ? 'offer' : 'unit';
   if (kind === 'offer' && run.pendingReward) return;
+  cancelGuide();
   pointerDrag = { kind, uid: source.dataset.dragOffer || source.dataset.dragUid, pointerId: event.pointerId, source, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, rect: source.getBoundingClientRect(), started: false, frame: null, ghost: null };
 });
 app.addEventListener('pointermove', event => {
@@ -599,7 +626,7 @@ app.addEventListener('pointerup', event => {
     if (unit) { selectedUid = unit.uid; if (target.dataset.sellZone) act(sell, unit.uid); else act(moveUnit, unit.uid, zone, index); }
   }
 });
-function cancelPointerDrag() { if (pointerDrag?.started) suppressClickUntil = Date.now() + 400; clearDrag(); }
+function cancelPointerDrag() { if (pointerDrag?.started) suppressClickUntil = Date.now() + 400; clearDrag(); syncGuideAvailability(); }
 app.addEventListener('pointercancel', cancelPointerDrag);
 app.addEventListener('lostpointercapture', () => { if (pointerDrag) cancelPointerDrag(); });
 app.addEventListener('dragstart', event => { if (event.target.closest('.unit-card')) event.preventDefault(); });
@@ -617,6 +644,107 @@ document.addEventListener('focusin', previewFromEvent);
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && inspectorOpen && !dialog.open) { inspectorOpen = false; inspectorPinned = false; updateInspector(); restoreFocus(inspectorReturnFocus); }
 });
+function loadGuidePreference() {
+  try { return localStorage.getItem(GUIDE_PREFERENCE_KEY) !== 'off'; } catch { return true; }
+}
+function guideToggle() {
+  return `<button class="icon-button guide-toggle" data-action="guide-toggle" data-focus="guide-toggle" aria-pressed="${guideEnabled}" title="閒置5秒提供操作建議，不會自動操作">引導${guideEnabled ? '開' : '關'}</button>`;
+}
+function guideMount(entry = false) {
+  return `<span class="idle-guide ${entry ? 'is-entry' : ''}" hidden role="status" aria-live="polite" aria-atomic="true"></span>`;
+}
+function guideAllowed() {
+  return guideEnabled && !document.hidden && !busy && !pointerDrag && !chestOpening && !dialog.open && shown.phase !== 'combat' && !(screen === 'run' && inspectorOpen && window.matchMedia('(max-width: 1099px)').matches);
+}
+function cancelGuide() {
+  guideGeneration++;
+  if (guideTimer !== null) clearTimeout(guideTimer);
+  guideTimer = null;
+  guideVisible = false;
+  guideTarget?.classList.remove('is-guide-target');
+  guideTarget = null;
+  const guide = app.querySelector('.idle-guide');
+  if (guide) guide.hidden = true;
+  app.querySelector('.feedback-line')?.classList.remove('has-guide');
+}
+function guideElementVisible(element) {
+  if (!element || element.disabled || element.getClientRects?.().length === 0) return false;
+  const rect = element.getBoundingClientRect?.();
+  if (!rect) return true;
+  return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < (window.innerHeight || Infinity) && rect.left < (window.innerWidth || Infinity);
+}
+function resolveGuideTarget(advice) {
+  const target = advice.target;
+  let element = null;
+  if (target.kind === 'control') element = [...app.querySelectorAll('[data-action]')].find(node => node.dataset.action === target.action && guideElementVisible(node));
+  if (target.kind === 'unit') element = [...app.querySelectorAll('[data-drag-uid]')].find(node => String(node.dataset.dragUid) === String(target.uid))?.querySelector('.card-face');
+  if (target.kind === 'board-slot') element = [...app.querySelectorAll('[data-drop-zone]')].find(node => node.dataset.dropZone === 'board' && Number(node.dataset.dropIndex) === target.index)?.querySelector('.empty-slot');
+  if (target.kind === 'shop-card') {
+    const card = [...app.querySelectorAll('[data-drag-offer]')].find(node => String(node.dataset.dragOffer) === String(target.uid));
+    element = card?.querySelector('.buy-button');
+    const rail = card?.closest('.shop-rail');
+    const rect = card?.getBoundingClientRect();
+    const railRect = rail?.getBoundingClientRect();
+    if (rect && railRect && (rect.left < railRect.left - 3 || rect.right > railRect.right + 3)) {
+      const direction = rect.left < railRect.left ? '-1' : '1';
+      element = [...app.querySelectorAll('[data-action="shop-scroll"]')].find(node => node.dataset.direction === direction);
+      advice = { ...advice, title: direction === '1' ? '看下一組角色' : '看上一組角色', reason: '這位夥伴在另一組，先切換查看' };
+    }
+  }
+  return guideElementVisible(element) ? { element, advice } : null;
+}
+function armGuide() {
+  if (guideTimer !== null || guideVisible || guideDismissed || !guideAllowed()) return;
+  const generation = guideGeneration;
+  guideTimer = setTimeout(() => {
+    if (generation !== guideGeneration) return;
+    guideTimer = null;
+    if (guideDismissed || !guideAllowed()) return;
+    const advice = getGuideAdvice({ run, shown, screen, busy, dialogOpen: dialog.open, selectedUid, adventureStarted, chestOpening });
+    if (!advice) return;
+    const resolved = resolveGuideTarget(advice);
+    const guide = app.querySelector('.idle-guide');
+    if (!resolved || !guide) return;
+    guideTarget = resolved.element;
+    guideTarget.classList.add('is-guide-target');
+    guide.innerHTML = `<strong>${esc(resolved.advice.title)}</strong><span>${esc(resolved.advice.reason)}</span><button type="button" data-action="guide-dismiss" aria-label="關閉這次引導">${icon('close')}</button>`;
+    guide.setAttribute('data-guide-key', resolved.advice.key);
+    if (resolved.advice.note) guide.setAttribute('title', resolved.advice.note);
+    guide.hidden = false;
+    guideVisible = true;
+    app.querySelector('.feedback-line')?.classList.add('has-guide');
+  }, 5000);
+}
+function syncGuideAvailability() {
+  if (!guideAllowed()) cancelGuide();
+  else armGuide();
+}
+function resetGuideActivity() {
+  guideDismissed = false;
+  cancelGuide();
+  armGuide();
+}
+function dismissGuide() { guideDismissed = true; cancelGuide(); }
+function guideActivity(event) {
+  const action = event.target?.closest?.('[data-action]')?.dataset.action;
+  // Keep these controls mounted until their native click activation completes.
+  if (action === 'guide-dismiss' || action === 'guide-toggle') return;
+  resetGuideActivity();
+}
+document.addEventListener('pointermove', event => {
+  if (guidePointer?.x === event.clientX && guidePointer?.y === event.clientY) return;
+  guidePointer = { x: event.clientX, y: event.clientY };
+  if (!guideVisible) resetGuideActivity();
+});
+document.addEventListener('pointerdown', guideActivity);
+document.addEventListener('pointerup', () => { if (!pointerDrag) syncGuideAvailability(); });
+document.addEventListener('click', guideActivity);
+document.addEventListener('keydown', guideActivity);
+document.addEventListener('scroll', resetGuideActivity, true);
+document.addEventListener('visibilitychange', () => { cancelGuide(); if (!document.hidden) armGuide(); });
+window.addEventListener('blur', cancelGuide);
+window.addEventListener('focus', () => { cancelGuide(); armGuide(); });
+window.addEventListener('resize', resetGuideActivity);
 document.addEventListener('error', event => {
   const image = event.target;
   if (image.matches?.('img[data-merchant]') && !image.dataset.fallback) { image.dataset.fallback = 'true'; image.src = imageUrl(14, true); return; }
@@ -631,6 +759,7 @@ dialog.addEventListener('close', () => {
   if (dialog.open) return;
   if (screen === 'run' && inspectorOpen && window.matchMedia('(max-width: 1099px)').matches) app.querySelector('[data-action="inspector-close"]')?.focus({ preventScroll: true });
   else restoreFocus(returnFocus);
+  syncGuideAvailability();
 });
 render('primary');
 installThemeBridge();

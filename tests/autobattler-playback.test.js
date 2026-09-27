@@ -6,6 +6,7 @@ import * as engine from '../public/game/src/autobattler.js';
 import { CONFIG, ROSTER, TRAITS, getCharacter } from '../public/game/src/roster.js';
 import { loadRun, saveRun, clearRun } from '../public/game/src/storage.js';
 import { CHARACTER_STORIES, CHARACTER_STORY_NOTE } from '../public/game/src/character-stories.js';
+import { getGuideAdvice, GUIDE_ADVICE_NOTE } from '../public/game/src/guide-advisor.js';
 
 // Execute the real UI controller with its engine and storage. Only browser
 // surfaces and the animation driver are replaced, so races remain observable.
@@ -20,9 +21,12 @@ function prepared() {
   state.opponent.board = [unit(4, 7)];
   return state;
 }
-function harness(state = prepared(), { enterRun = true, reducedMotion = false, canHover = true, narrowScreen = false } = {}) {
+function harness(state = prepared(), { enterRun = true, reducedMotion = false, canHover = true, narrowScreen = false, guidePreference = 'off' } = {}) {
   const data = new Map(), pending = [], calls = [], timers = new Map(), warnings = [];
-  let saves = 0, timerId = 0, now = 10_000, qa;
+  let saves = 0, timerId = 0, now = 10_000, qa, preferenceWrites = 0;
+  // Existing playback cases isolate animation timers; guide cases omit this preference to verify default-on.
+  if (guidePreference !== null) data.set('taika-guide-enabled-v1', guidePreference);
+  const preferences = { getItem: key => data.get(key) ?? null, setItem(key, value) { preferenceWrites++; data.set(key, String(value)); }, removeItem: key => data.delete(key) };
   const store = { getItem: key => data.get(key) ?? null, setItem(key, value) { saves++; data.set(key, value); }, removeItem: key => data.delete(key) };
   if (state) saveRun(state, store); saves = 0;
   function eventTarget() {
@@ -39,27 +43,65 @@ function harness(state = prepared(), { enterRun = true, reducedMotion = false, c
     toggle(name, force = !classes.has(name)) { if (force) classes.add(name); else classes.delete(name); return force; },
   },
     querySelector: () => null, querySelectorAll: () => [], showModal() { this.open = true; }, close() { this.open = false; }, scrollIntoView() {},
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 120 }), cloneNode: () => element(), setAttribute() {}, removeAttribute() {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 120, right: 80, bottom: 120 }), cloneNode: () => element(), setAttribute(name, value) { if (name.startsWith('data-')) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = String(value); }, removeAttribute() {},
     append(node) { node.parent = this; this.children.push(node); }, remove() { if (this.parent) this.parent.children = this.parent.children.filter(node => node !== this); },
   }; }
+  // Parse the real rendered controls, including their parent/child relations.
+  // This is a DOM surface for controller tests, not a layout/browser substitute.
+  function markupDOM(html, parent = null) {
+    const root = { children: [], parent }, stack = [root];
+    for (const match of html.matchAll(/<\/?([\w-]+)\b([^>]*)>/g)) {
+      const [tag, name, attrs] = match;
+      if (tag.startsWith('</')) {
+        const index = stack.findLastIndex(node => node.tagName === name);
+        if (index > 0) stack.length = index;
+        continue;
+      }
+      const node = element(); node.tagName = name; node.parent = stack.at(-1);
+      node.disabled = /\bdisabled(?:\s|=|$)/.test(attrs); node.hidden = /\bhidden(?:\s|=|$)/.test(attrs);
+      node.className = attrs.match(/class="([^"]*)"/)?.[1] || '';
+      node.classList.add(...node.className.split(/\s+/).filter(Boolean));
+      for (const [, key, value] of attrs.matchAll(/data-([\w-]+)="([^"]*)"/g)) node.dataset[key.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] = value;
+      node.matches = selector => {
+        if (selector.startsWith('.')) return node.classList.contains(selector.slice(1));
+        const attribute = selector.match(/^\[data-([\w-]+)(?:="([^"]*)")?\]$/);
+        if (!attribute) return false;
+        const value = node.dataset[attribute[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())];
+        return value !== undefined && (attribute[2] === undefined || value === attribute[2]);
+      };
+      node.querySelectorAll = selector => descendants(node).filter(child => child.matches(selector));
+      node.querySelector = selector => node.querySelectorAll(selector)[0] || null;
+      node.closest = selector => { for (let candidate = node; candidate; candidate = candidate.parent) if (candidate.matches?.(selector)) return candidate; return null; };
+      node.getClientRects = () => { for (let candidate = node; candidate; candidate = candidate.parent) if (candidate.hidden) return []; return [node.getBoundingClientRect()]; };
+      node.focus = () => { document.activeElement = node; };
+      let content = '';
+      Object.defineProperty(node, 'innerHTML', { get: () => content, set(value) { content = value; node.children = markupDOM(value, node).children; node.children.forEach(child => { child.parent = node; }); } });
+      node.parent.children.push(node);
+      if (!['img', 'input', 'br', 'hr', 'meta', 'link', 'path', 'circle'].includes(name) && !tag.endsWith('/>')) stack.push(node);
+    }
+    return root;
+  }
+  function descendants(root) { return root.children.flatMap(node => [node, ...descendants(node)]); }
   const app = element(), dialog = element(), live = element(), inspector = element(), panel = element(), pin = element();
-  let appHTML = '', renders = 0;
+  let appHTML = '', renders = 0, markup = { children: [] };
   Object.defineProperty(app, 'innerHTML', { get: () => appHTML, set(value) {
-    appHTML = value; renders++;
+    appHTML = value; renders++; markup = markupDOM(value);
     inspector.innerHTML = value.match(/<div id="inspector-content"[^>]*>([\s\S]*)<\/div><\/aside>/)?.[1] || '';
     panel.classList.toggle('is-open', /<aside class="card-inspector[^\"]*\bis-open/.test(value));
   } });
-  app.querySelector = selector => !appHTML.includes('id="inspector-content"') ? null : selector === '#inspector-content' ? inspector : selector === '.card-inspector' ? panel : null;
+  const guideNodes = selector => descendants(markup).filter(node => node.matches(selector));
+  app.querySelectorAll = selector => selector === '[data-focus]' || selector === '.card-rail' ? [] : guideNodes(selector);
+  app.querySelector = selector => selector === '#inspector-content' ? appHTML.includes('id="inspector-content"') ? inspector : null : selector === '.card-inspector' ? appHTML.includes('id="inspector-content"') ? panel : null : ['.idle-guide', '.feedback-line'].includes(selector) ? guideNodes(selector)[0] || null : null;
   panel.querySelector = selector => selector === '[data-action="inspector-pin"]' ? pin : null;
   const document = { ...eventTarget(), body: element(), hidden: false, activeElement: null, querySelector: selector => selector === '#app' ? app : selector === '#game-dialog' ? dialog : live };
-  const window = { ...eventTarget(), scrollTo() {}, matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query === '(hover: hover)' ? canHover : query === '(max-width: 1099px)' ? narrowScreen : false }) };
+  const window = { ...eventTarget(), localStorage: preferences, scrollTo() {}, matchMedia: query => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query === '(hover: hover)' ? canHover : query === '(max-width: 1099px)' ? narrowScreen : false }) };
   const fx = {
     capture: () => ({}), sync() {},
     cancel() { while (pending.length) pending.shift()(); },
     play(step) { calls.push({ step, shown: copy(qa.shown()) }); return new Promise(resolve => pending.push(resolve)); },
   };
   class ClockDate extends Date { static now() { return now; } }
-  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, getCharacter, CHARACTER_STORIES, CHARACTER_STORY_NOTE, structuredClone, URL, AbortController, document, window, Date: ClockDate,
+  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, getCharacter, CHARACTER_STORIES, CHARACTER_STORY_NOTE, getGuideAdvice, GUIDE_ADVICE_NOTE, structuredClone, URL, AbortController, document, window, localStorage: preferences, Date: ClockDate,
     console: { warn: (...args) => warnings.push(args), error: (...args) => warnings.push(args) },
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay, at: now + delay }); return id; }, clearTimeout: id => timers.delete(id),
     requestAnimationFrame(fn) { const id = ++timerId; timers.set(id, { fn, delay: 16, at: now + 16 }); return id; }, cancelAnimationFrame: id => timers.delete(id),
@@ -124,7 +166,7 @@ function harness(state = prepared(), { enterRun = true, reducedMotion = false, c
     const target = cardTarget(criteria);
     document.dispatch(event, { target, pointerType, preventDefault() {} }); return target;
   };
-  return { qa, fx, calls, pending, timers, warnings, document, window, app, live, dialog, inspector, panel, click, inspect, cardTarget, visible, drain, settled, finishAction, advance, beginDrag, drag, store, visibilityBaseline, get renders() { return renders; }, get saves() { return saves; } };
+  return { qa, fx, calls, pending, timers, warnings, document, window, app, live, dialog, inspector, panel, click, inspect, cardTarget, visible, drain, settled, finishAction, advance, beginDrag, drag, store, preferences, guideNodes, visibilityBaseline, get preferenceWrites() { return preferenceWrites; }, get renders() { return renders; }, get saves() { return saves; } };
 }
 
 test('animation rejection or missing capture recovers to the saved result without rerunning combat', async () => {
@@ -606,4 +648,184 @@ test('a queued modal close cannot steal focus from a newly opened phone inspecto
   const newModalControl = focusable({ dataset: { action: 'close-dialog' } }); newModalControl.focus();
   h.dialog.dispatch('close'); assert.equal(h.document.activeElement, newModalControl, 'old close must not steal focus from a later modal');
   assert.equal(h.saves, 0);
+});
+
+function guideUI(h) { return h.app.querySelector('.idle-guide'); }
+function guideTarget(h, action) {
+  assert.equal(guideUI(h)?.hidden, false, 'the mounted guide is visible');
+  const targets = h.guideNodes('.is-guide-target');
+  assert.equal(targets.length, 1, 'one real rendered target is highlighted');
+  assert.equal(targets[0].disabled, false); assert(targets[0].getClientRects().length);
+  if (action) assert.equal(targets[0].dataset.action, action);
+  return targets[0];
+}
+function activity(h, type, extra = {}) {
+  h.document.dispatch(type, { target: { closest: () => null, matches: () => false }, preventDefault() {}, ...extra });
+}
+
+test('idle guidance defaults on at exactly five seconds and never spends, saves or rebuilds the board', async () => {
+  const h = harness(prepared(), { guidePreference: null });
+  const before = copy(h.qa.run()), renders = h.renders, saves = h.saves;
+  assert.equal(h.preferenceWrites, 0); assert.equal(h.preferences.getItem('taika-guide-enabled-v1'), null);
+  assert.equal(h.timers.size, 1); await h.advance(4999); assert.equal(guideUI(h).hidden, true);
+  await h.advance(1); const target = guideTarget(h, 'buy');
+  assert(h.qa.run().shop.offers.some(offer => String(offer.uid) === target.dataset.uid));
+  assert.match(guideUI(h).innerHTML, /招募/); assert(guideUI(h).dataset.guideKey);
+  await h.advance(30_000);
+  assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, saves); assert.equal(h.renders, renders);
+  assert.equal(h.qa.selection(), null); assert.equal(h.timers.size, 0); assert.equal(h.preferenceWrites, 0);
+});
+
+test('real activity resets the full idle interval while visible guidance remains reachable by pointer movement', async () => {
+  const h = harness(prepared(), { guidePreference: null });
+  await h.advance(4000); activity(h, 'pointermove', { clientX: 12, clientY: 15 });
+  await h.advance(4999); assert.equal(guideUI(h).hidden, true);
+  activity(h, 'pointermove', { clientX: 12, clientY: 15 }); // Same coordinates are not new movement.
+  await h.advance(1); const target = guideTarget(h);
+  activity(h, 'pointermove', { clientX: 90, clientY: 100 });
+  assert.equal(guideTarget(h), target); assert.equal(h.timers.size, 0);
+  for (const type of ['pointerdown', 'keydown', 'scroll', 'click']) {
+    activity(h, type, { key: 'ArrowRight' }); assert.equal(guideUI(h).hidden, true);
+    assert.equal(h.guideNodes('.is-guide-target').length, 0);
+    await h.advance(4999); assert.equal(guideUI(h).hidden, true);
+    await h.advance(1); guideTarget(h);
+  }
+});
+
+test('dismiss survives the real pointer sequence and stays quiet until new activity; preference toggles persist', async () => {
+  const h = harness(prepared(), { guidePreference: null }); await h.advance(5000);
+  const dismiss = guideUI(h).querySelector('[data-action="guide-dismiss"]'); assert(dismiss);
+  activity(h, 'pointerdown', { target: dismiss }); activity(h, 'pointerup', { target: dismiss });
+  assert.equal(guideUI(h).hidden, false, 'dismiss remains mounted until its native click');
+  activity(h, 'click', { target: dismiss }); assert.equal(guideUI(h).hidden, true);
+  await h.advance(20_000); assert.equal(guideUI(h).hidden, true); assert.equal(h.timers.size, 0);
+  activity(h, 'pointermove', { clientX: 10, clientY: 10 });
+  await h.advance(4999); assert.equal(guideUI(h).hidden, true); await h.advance(1); guideTarget(h);
+  const renders = h.renders, saves = h.saves, before = copy(h.qa.run());
+  h.click('guide-toggle'); assert.equal(h.preferences.getItem('taika-guide-enabled-v1'), 'off');
+  await h.advance(10_000); activity(h, 'keydown', { key: 'Tab' }); await h.advance(5000);
+  assert.equal(guideUI(h).hidden, true); assert.equal(h.timers.size, 0);
+  h.click('guide-toggle'); assert.equal(h.preferences.getItem('taika-guide-enabled-v1'), 'on');
+  await h.advance(4999); assert.equal(guideUI(h).hidden, true); await h.advance(1); guideTarget(h);
+  assert.equal(h.preferenceWrites, 2); assert.deepEqual(h.qa.run(), before);
+  assert.equal(h.renders, renders); assert.equal(h.saves, saves);
+  const restored = harness(prepared(), { guidePreference: 'off' }); await restored.advance(10_000);
+  assert.equal(guideUI(restored).hidden, true); assert.equal(restored.preferenceWrites, 0);
+});
+
+test('hidden pages, native dialogs and phone inspectors suspend guidance and resume after a fresh five seconds', async () => {
+  for (const route of ['hidden', 'dialog', 'inspector']) {
+    const h = harness(prepared(), { guidePreference: null, narrowScreen: route === 'inspector' });
+    await h.advance(4000);
+    if (route === 'hidden') h.visible(false);
+    else if (route === 'dialog') h.click('rules');
+    else h.inspect({ inspectSource: 'owned', inspectUid: h.qa.run().player.board[0].uid }, 'click', 'touch');
+    await h.advance(20_000); assert.equal(guideUI(h).hidden, true, route); assert.equal(h.timers.size, 0, route);
+    if (route === 'hidden') h.visible(true);
+    else if (route === 'dialog') { h.click('close-dialog'); h.dialog.dispatch('close'); }
+    else h.click('inspector-close');
+    await h.advance(4999); assert.equal(guideUI(h).hidden, true, route);
+    await h.advance(1); guideTarget(h);
+  }
+});
+
+test('dragging and transactions suppress idle guidance without breaking purchases or manual deployment', async () => {
+  const h = harness(engine.createRun(804), { guidePreference: null });
+  await h.advance(5000); const buyTarget = guideTarget(h, 'buy'), offerUid = buyTarget.dataset.uid;
+  const before = copy(h.qa.run()), pointer = h.beginDrag('offer', offerUid, { buyZone: 'bench' });
+  await h.advance(7000); assert.equal(guideUI(h).hidden, true); assert.deepEqual(h.qa.run(), before);
+  pointer.release(); assert.equal(h.qa.busy(), true); assert.equal(guideUI(h).hidden, true);
+  await h.advance(4999); assert.equal(guideUI(h).hidden, true); await h.finishAction();
+  assert.equal(h.qa.run().player.gold, before.player.gold - CONFIG.buyCost);
+  assert.equal(h.qa.run().player.bench.length, 1); assert.equal(h.qa.run().player.board.length, 0);
+  await h.advance(4999); assert.equal(guideUI(h).hidden, true); await h.advance(1);
+  const slot = guideTarget(h, 'place');
+  assert.equal(slot.closest('[data-drop-zone]').dataset.dropZone, 'board');
+  activity(h, 'click', { target: slot }); await h.finishAction();
+  assert.equal(h.qa.run().player.board.length, 1); assert.equal(h.qa.run().player.bench.length, 0);
+  assert.equal(h.qa.run().phase, 'recruit');
+});
+
+test('cancelled drags rearm guidance only after the full interval without retaining pointer frames', async () => {
+  const h = harness(prepared(), { guidePreference: null }); await h.advance(3000);
+  const before = copy(h.qa.run()), pointer = h.beginDrag('unit', h.qa.run().player.board[0].uid, { dropZone: 'bench', dropIndex: '0' });
+  await h.advance(6000); assert.equal(guideUI(h).hidden, true); pointer.release(true);
+  assert.equal(h.timers.size, 1); await h.advance(4999); assert.equal(guideUI(h).hidden, true);
+  await h.advance(1); guideTarget(h); assert.deepEqual(h.qa.run(), before);
+});
+
+test('combat hides and invalidates pending guidance, then only guides the saved result after five idle seconds', async () => {
+  const h = harness(prepared(), { guidePreference: null }), oldTimer = [...h.timers.values()][0];
+  const playback = h.qa.act(engine.startCombat); await tick(); oldTimer.fn();
+  assert.equal(guideUI(h).hidden, true); assert.equal(h.qa.busy(), true);
+  h.visible(false); await h.advance(6000); assert.equal(guideUI(h).hidden, true);
+  h.visible(true); assert.equal(guideUI(h).hidden, true); await h.drain(playback);
+  const result = copy(h.qa.run()), saves = h.saves;
+  await h.advance(4999); assert.equal(guideUI(h).hidden, true); await h.advance(1); guideTarget(h, 'next');
+  assert.deepEqual(h.qa.run(), result); assert.equal(h.saves, saves);
+});
+
+test('old idle callbacks cannot highlight a new run, a changed scene or a disabled guide', async () => {
+  const h = harness(prepared(), { guidePreference: null });
+  for (const action of ['lobby', 'continue', 'new-run', 'guide-toggle']) {
+    const old = [...h.timers.values()].find(timer => timer.delay === 5000); assert(old, action);
+    h.click(action); old.fn(); assert.equal(guideUI(h).hidden, true, action);
+    assert.equal(h.guideNodes('.is-guide-target').length, 0); assert(h.timers.size <= 1);
+  }
+  h.click('guide-toggle');
+  for (let index = 0; index < 30; index++) {
+    const old = [...h.timers.values()][0]; activity(h, 'keydown', { key: 'Tab' }); old.fn();
+    assert.equal(h.timers.size, 1); assert.equal(guideUI(h).hidden, true);
+  }
+  await h.advance(5000); guideTarget(h);
+});
+
+test('closed chests and lobbies receive guidance without automatically opening, while the opening animation does not', async () => {
+  const h = harness(null, { enterRun: false, guidePreference: null });
+  await h.advance(5000); guideTarget(h, 'open-chest'); assert.equal(h.qa.screen(), 'opening'); assert.equal(h.saves, 0);
+  h.click('open-chest'); assert.equal(guideUI(h).hidden, true);
+  await h.advance(1049); assert.equal(h.qa.screen(), 'opening'); assert.equal(guideUI(h).hidden, true);
+  await h.advance(1); assert.equal(h.qa.screen(), 'lobby'); assert.equal(guideUI(h).hidden, true);
+  await h.advance(4999); assert.equal(guideUI(h).hidden, true); await h.advance(1); guideTarget(h, 'new-run');
+  assert.equal(h.saves, 0); assert.equal(h.preferenceWrites, 0);
+});
+
+test('guidance rejects disabled or invisible controls and routes an offscreen shop card to its real scroll button', async () => {
+  for (const blocked of ['disabled', 'invisible']) {
+    const h = harness(engine.createRun(804), { guidePreference: null });
+    const advice = getGuideAdvice({ run: h.qa.run(), shown: h.qa.shown() });
+    const card = h.guideNodes('[data-drag-offer]').find(node => node.dataset.dragOffer === String(advice.target.uid));
+    const target = card.querySelector('.buy-button');
+    if (blocked === 'disabled') target.disabled = true; else target.getClientRects = () => [];
+    await h.advance(5000); assert.equal(guideUI(h).hidden, true); assert.equal(h.guideNodes('.is-guide-target').length, 0);
+  }
+  const state = engine.createRun(804); state.player.tier = 2;
+  const h = harness(state, { guidePreference: null });
+  const advice = getGuideAdvice({ run: h.qa.run(), shown: h.qa.shown() });
+  const card = h.guideNodes('[data-drag-offer]').find(node => node.dataset.dragOffer === String(advice.target.uid));
+  card.getBoundingClientRect = () => ({ left: 400, right: 480, top: 0, bottom: 120, width: 80, height: 120 });
+  await h.advance(5000); const next = guideTarget(h, 'shop-scroll');
+  assert.equal(next.dataset.direction, '1'); assert.match(guideUI(h).innerHTML, /下一組角色/);
+});
+
+test('deployment advice points at real owned cards and first cancels another selection instead of causing an accidental move', async () => {
+  const state = prepared();
+  state.player.bench.push({ ...state.player.board[0], uid: `u-${state.nextUid++}` });
+  const h = harness(state, { guidePreference: null }), before = copy(h.qa.run());
+  h.click('select', { uid: state.player.board[0].uid });
+  await h.advance(5000); const unselect = guideTarget(h, 'unselect');
+  assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, 0);
+  activity(h, 'click', { target: unselect }); assert.equal(h.qa.selection(), null);
+  await h.advance(5000); const unit = guideTarget(h, 'select');
+  assert.equal(unit.closest('[data-drag-uid]').dataset.dragUid, state.player.bench[0].uid);
+  activity(h, 'click', { target: unit });
+  assert.equal(h.qa.selection(), state.player.bench[0].uid); assert.deepEqual(h.qa.run(), before);
+  await h.advance(5000); guideTarget(h, 'place'); assert.equal(h.saves, 0);
+});
+
+test('a stranded empty team is directed to the real lobby button without receiving money or starting combat', async () => {
+  const state = engine.createRun(809); state.player.gold = 2;
+  const h = harness(state, { guidePreference: null }), before = copy(h.qa.run());
+  await h.advance(5000); guideTarget(h, 'lobby');
+  assert.deepEqual(h.qa.run(), before); assert.equal(h.saves, 0); assert.equal(h.qa.busy(), false);
 });
