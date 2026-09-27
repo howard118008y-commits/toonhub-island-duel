@@ -32,6 +32,7 @@ export function versionedGame(sourceDir: string) {
       mkdirSync(join(outputDir, 'game'));
       writeFileSync(join(outputDir, 'game', 'index.html'), `<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,follow">
 <meta http-equiv="refresh" content="0;url=${destination}"><title>開啟臺灣地域自走棋</title>
 <script>location.replace(${JSON.stringify(destination)});</script></head>
 <body><p>正在開啟最新版遊戲。<a href="${destination}">若未自動前往，請點此繼續。</a></p></body></html>

@@ -1,0 +1,4 @@
+# This project-path copy is informational; crawlers use /robots.txt at the hostname root.
+User-agent: *
+Allow: /
+Sitemap: https://howard118008y-commits.github.io/toonhub-island-duel/sitemap.xml

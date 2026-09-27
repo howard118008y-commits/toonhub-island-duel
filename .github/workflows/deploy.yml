@@ -44,6 +44,9 @@ jobs:
       - name: Build website
         run: npm run build
 
+      - name: Check search metadata and public assets
+        run: npm run check:seo
+
       - name: Upload website
         uses: actions/upload-pages-artifact@v4
         with:
@@ -52,3 +55,7 @@ jobs:
       - name: Deploy website
         id: deployment
         uses: actions/deploy-pages@v5
+
+      - name: Notify search engines of updated content
+        continue-on-error: true
+        run: npm run notify:indexnow

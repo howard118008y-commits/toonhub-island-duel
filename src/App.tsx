@@ -48,6 +48,7 @@ export default function App() {
 
   useEffect(() => {
     mounted.current = true;
+    if (window.location.hash === '#play') openGame();
     const onResize = () => setIsMobile(window.innerWidth < 640);
     window.addEventListener('resize', onResize);
     return () => {
@@ -146,14 +147,14 @@ export default function App() {
       <main className="hero relative w-full overflow-clip" aria-label="臺灣地域角色輪播">
         <div className="hero-pattern absolute inset-0 pointer-events-none" aria-hidden="true" />
         <div className="grain absolute inset-0 pointer-events-none" aria-hidden="true" />
-        <h1 className={`ghost-text absolute inset-x-0 flex items-center justify-center pointer-events-none select-none ${activeCharacter.region.length > 2 ? 'long-region' : ''}`}>{activeCharacter.region}</h1>
+        <p className={`ghost-text absolute inset-x-0 flex items-center justify-center pointer-events-none select-none ${activeCharacter.region.length > 2 ? 'long-region' : ''}`} aria-hidden="true">{activeCharacter.region}</p>
 
         <header className="site-header">
-          <div className="brand-label"><span className="brand-mark" aria-hidden="true">嶼</span><span className="brand-name">{BRAND_NAME}<small>臺灣地域自走棋</small></span></div>
+          <div className="brand-label"><img className="brand-mark brand-logo" src={`${import.meta.env.BASE_URL}brand/logo.svg`} width={40} height={44} alt="" /><span className="brand-name">{BRAND_NAME}<small>臺灣地域自走棋</small></span></div>
           <button className="collection-trigger" type="button" onClick={() => collectionDialog.current?.showModal()}><Grid2X2 size={18} aria-hidden="true" />角色圖鑑</button>
         </header>
 
-        <div className="game-pitch"><strong>招募英雄，排陣上場。</strong><p>24 位角色，10 輪單機自動對戰。</p></div>
+        <div className="game-pitch"><h1>招募英雄，排陣上場。</h1><p>24 位角色，10 輪單機自動對戰。</p></div>
 
         <div className="carousel absolute inset-0" aria-roledescription="角色輪播" aria-label="二十四位臺灣地域角色，同框四位">
           {CHARACTERS.map((character, index) => {
@@ -187,6 +188,16 @@ export default function App() {
         <a className="discover-link" href="#play" onClick={event => { event.preventDefault(); openGame(); }} aria-label="開始冒險，開啟單機自走棋"><span><small>免下載・免登入</small>開始冒險</span><ArrowUpRight className="discover-arrow" strokeWidth={1.8} aria-hidden="true" /></a>
         <span className="sr-only" role="status" aria-live="polite">第 {activeIndex + 1} 位，共 24 位。{activeCharacter.region}，{activeCharacter.job}。{activeCharacter.quote}</span>
       </main>
+
+      <section className="site-reading" aria-labelledby="reading-title">
+        <div className="site-reading-copy"><p className="reading-kicker">{BRAND_NAME} · 臺灣地域自走棋</p><h2 id="reading-title">24 位臺灣角色，一場輕鬆上手的自走棋。</h2><p>免費、免註冊的單機網頁遊戲。招募角色、組合六種羈絆，讓隊伍自動對戰，挑戰十輪冒險。</p></div>
+        <nav className="reading-links" aria-label="遊戲資料">
+          <a href={`${import.meta.env.BASE_URL}guide/`}><span><strong>玩法教學</strong><small>招募、排陣與三合一</small></span><ArrowUpRight size={22} aria-hidden="true" /></a>
+          <a href={`${import.meta.env.BASE_URL}characters/`}><span><strong>24 角色圖鑑</strong><small>地區台詞、技能與羈絆</small></span><ArrowUpRight size={22} aria-hidden="true" /></a>
+          <a href={`${import.meta.env.BASE_URL}about/`}><span><strong>關於與隱私</strong><small>創作來源與本機存檔</small></span><ArrowUpRight size={22} aria-hidden="true" /></a>
+        </nav>
+        <p className="reading-note">地區角色是趣味創作，不代表真實居民。遊戲進度儲存於目前裝置的瀏覽器。</p>
+      </section>
 
       <dialog ref={collectionDialog} className="collection-dialog" aria-labelledby="collection-title">
         <header className="collection-header"><div><h2 id="collection-title">找找你的主場</h2><p>24 個地區，24 種上場的個性。</p></div><button className="icon-button" type="button" onClick={() => collectionDialog.current?.close()} aria-label="關閉角色圖鑑"><X size={22} aria-hidden="true" /></button></header>

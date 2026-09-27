@@ -2,7 +2,7 @@
 
 招募 24 位臺灣地域角色，搭配羈絆與站位，挑戰 10 輪單機自動對戰。首頁與遊戲共用立體人物、四組地域配色及圖案；支援桌面、手機與瀏覽器本機存檔，不需帳號或遊戲伺服器。
 
-[網站](https://howard118008y-commits.github.io/toonhub-island-duel/) · [GitHub 專案](https://github.com/howard118008y-commits/toonhub-island-duel)
+[網站](https://howard118008y-commits.github.io/toonhub-island-duel/) · [玩法教學](https://howard118008y-commits.github.io/toonhub-island-duel/guide/) · [24角色圖鑑](https://howard118008y-commits.github.io/toonhub-island-duel/characters/) · [關於與隱私](https://howard118008y-commits.github.io/toonhub-island-duel/about/) · [GitHub 專案](https://github.com/howard118008y-commits/toonhub-island-duel)
 
 ## 設計與驗收紀錄
 
@@ -29,12 +29,13 @@ npm run dev
 npm test
 npm run test:balance
 npm run build
+npm run check:seo
 npm run preview
 ```
 
 正式網站輸出至 `dist/`；`public/game/` 會依全部遊戲檔案內容的雜湊輸出至 `dist/game-<hash>/`，`public/characters/` 則複製至 `dist/characters/`。Vite 自動定義 `VITE_GAME_ENTRY`，首頁直接載入版本入口，遊戲內相對 JS／CSS 模組共用目錄版本，不必逐檔維護 `?v=`。`dist/game/index.html` 保留為相容入口，將舊書籤導向目前版本，並提供繁體中文備援連結。版本目錄包含遊戲頁面、樣式、卡牌資料與規則引擎，人物素材維持獨立路徑。遊戲本身是靜態 JavaScript，無須另啟遊戲伺服器。
 
-GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `base: './'`，首頁資產與 iframe 的相對路徑可保留部署子路徑，變更儲存庫名稱時無須修改。若改用絕對 `base`，則須與部署網址一致，並確認首頁及 `game/` 都能載入。
+GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `base: './'`，首頁資產、iframe 與遊戲內的相對路徑可保留部署子路徑；若更換公開網址，仍需同步更新 canonical、結構化資料、sitemap、IndexNow 與說明文件。若改用絕對 `base`，則須與部署網址一致，並確認首頁及 `game/` 都能載入。
 
 ## 部署至 GitHub Pages
 
@@ -43,7 +44,7 @@ GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `ba
 3. 在 **Actions → Deploy to GitHub Pages** 確認執行成功；如初次推送時尚未設定 Pages，可按 **Run workflow** 重新執行。
 4. 開啟工作流程顯示的網站網址，確認輪播與卡牌遊戲均正常。
 
-後續推送至 `main` 會自動部署，也可手動執行。工作流程使用 Node.js 22，依序執行 `npm ci`、`npm test`、`npm run build`，僅上傳 `dist/`。部署使用官方 GitHub Actions 與 `github-pages` 環境，不需自行設定個人存取權杖。
+後續推送至 `main` 會自動部署，也可手動執行。工作流程使用 Node.js 22，依序執行 `npm ci`、`npm test`、`npm run build`、`npm run check:seo`，僅上傳 `dist/`；部署成功後通知 IndexNow，通知失敗不會回滾部署。部署使用官方 GitHub Actions 與 `github-pages` 環境，不需自行設定個人存取權杖。
 
 部署流程參考 [GitHub Pages 官方工作流程文件](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。
 
@@ -71,3 +72,14 @@ GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `ba
 美術方向與每位角色的最終生成提示詞見 [立體潮玩角色美術紀錄](art-direction-v2.md)。
 
 人物個性、技能與台詞均為創作設定；地域文化與網路印象不是對全體居民的判定。
+
+## 搜尋與分享
+
+首頁提供直接可讀的繁體中文介紹，另有三個靜態內容頁；canonical、Open Graph、WebSite／WebPage／VideoGame 結構化資料、品牌圖示、多尺寸 PNG、分享卡、sitemap 與輔助 llms.txt 一併部署。遊戲 iframe 與相容導向入口標示 noindex，避免重複內容。
+
+- [SEO／AEO／GEO 實作說明](docs/seo-implementation-2026-09-27.md)
+- `npm run check:seo`：檢查正式產物的四個可索引頁、結構化資料、靜態連結、品牌圖片與遊戲 noindex。
+- `node scripts/submit-indexnow.mjs`：僅列出通知內容；`npm run notify:indexnow` 才送出。公開 key 只是網址擁有權證明，不是存取憑證。
+- `public/robots.txt` 位於專案子路徑，不能代替 hostname 根目錄的 robots.txt；根站另行提供正式規則與品牌入口。
+
+搜尋引擎會自行決定是否及何時收錄、顯示圖示或引用。結構化資料、提交 sitemap、IndexNow 收件與 llms.txt 均不代表已收錄或排名保證。
