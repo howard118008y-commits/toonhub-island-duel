@@ -1,6 +1,8 @@
+import { getEncounterCard } from './encounters.js';
+
 // All tuning lives here; identities and portraits keep the original 24 characters.
 export const CONFIG = {
-  version: 1, rounds: 10, heroHealth: 24, boardSize: 5, benchSize: 3,
+  version: 2, rounds: 10, heroHealth: 24, boardSize: 5, benchSize: 3,
   buyCost: 3, sellValue: 1, refreshCost: 1, maxGold: 10,
   shopSizes: [3, 4, 4, 5], upgradeCosts: [5, 7, 9], minUpgradeCost: 1,
   damageCap: 8, maxAttacks: 200, maxLog: 50,
@@ -70,4 +72,4 @@ export const ROSTER = definitions.map(([id,region,job,quote,zone,faction,tier,at
   description: `${shortText}。${targetNotes[ability] || ''}所有增益與治療只作用於本場戰鬥；已退場角色不會復活。${keywords.includes('guard') && ability !== 'none' ? '守護：敵人必須優先攻擊我。' : ''}金卡基礎攻擊與生命加倍，技能數值加倍；護盾與連擊次數不疊加。`,
 }));
 const TOKEN = { id:101,region:'雲林',job:'掌中戲偶',quote:'田裡有糧，掌上有戲。',zone:'中部',faction:null,tier:1,attack:2,health:2,keywords:[],ability:'none',shortText:'戰鬥限定召喚物',description:'只存在於本場戰鬥，不計羈絆、不進入備位、不參與合成。',artId:101 };
-export const getCharacter = id => id === 101 ? TOKEN : ROSTER.find(card => card.id === id);
+export const getCharacter = id => id === 101 ? TOKEN : ROSTER.find(card => card.id === id) || getEncounterCard(id);

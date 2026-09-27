@@ -1,9 +1,10 @@
 import { writeFileSync } from 'node:fs';
 import { CONFIG, TRAITS, getCharacter } from '../public/game/src/roster.js';
-import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUnit, chooseTripleReward, startCombat, nextRound, getSynergies, validateRun } from '../public/game/src/autobattler.js';
+import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUnit, chooseTripleReward, startCombat, nextRound, getSynergies, validateRun, startEncounter, getEncounterOffer, resumeRecruitment } from '../public/game/src/autobattler.js';
 
 const seeds = Number(process.argv.find(value=>value.startsWith('--seeds='))?.split('=')[1] || 1000);
 const output = process.argv.find(value=>value.startsWith('--out='))?.slice(6);
+const compareEncounters = process.argv.includes('--compare-encounters');
 const held = state => [...state.player.board,...state.player.bench];
 const abilityValue = {shieldWeakest:3,buffAll:8,guide:1.4,selfHeal:1,weakestPing:1,deathBuff:4,deathBlast:6,adjacentAttack:2.8,healWeakest:1.5,puppet:3,healAll:4,startBlast:4,splash:4,attackGrowth:3,adjacentHealth:2.8,deathWave:3,deathThrow:2.5,adjacentShield:7,firstStrike:1.5};
 function raw(unit){return unit.attack+unit.maxHp*0.7;}
@@ -80,18 +81,34 @@ function recruit(state, focus, blind){
 const strategies=[...TRAITS.map(t=>({id:t.id,name:t.name})),{id:null,name:'綜合合理選牌'},{id:'blind',name:'盲買基準'}];
 const results=[];
 const started=Date.now();
-for(const strategy of strategies){
- const result={strategy:strategy.name,seeds,wins:0,deathsByRound:{},finalBossLosses:0,finalBossDraws:0,stalemates:0,nonTerminations:0,invalidStates:0,combatCount:0,totalFinalRound:0,meanDeathRound:null};
+for(const encounterMode of compareEncounters ? ['skip','attempt'] : ['skip'])for(const strategy of strategies){
+ const result={strategy:strategy.name,encounterMode,seeds,wins:0,deathsByRound:{},finalBossLosses:0,finalBossDraws:0,stalemates:0,nonTerminations:0,invalidStates:0,combatCount:0,totalFinalRound:0,meanDeathRound:null,encounters:{},rewardGold:0,totalXp:0,rewardCapViolations:0};
  for(let seed=1;seed<=seeds;seed++){
-  const state=createRun({seed});let rounds=0;
+  const state=createRun({seed});let rounds=0,rewardGold=0;
   while(state.phase!=='gameover'&&rounds++<CONFIG.rounds){
    recruit(state,strategy.id,strategy.id==='blind');
+   if(encounterMode==='attempt'&&getEncounterOffer(state)){
+    const beforeGold=state.player.gold,beforeXp=state.player.xp;
+    const battle=startEncounter(state,{recordTimeline:false});if(!battle.ok)throw new Error(battle.message);
+    const event=result.encounters[state.round]??={attempts:0,win:0,loss:0,draw:0,heroDamage:0};
+    const earnedGold=state.player.gold-beforeGold,expected=state.result.outcome==='win'?1:0;
+    rewardGold+=earnedGold;result.rewardGold+=earnedGold;
+    if(earnedGold!==expected||state.player.xp-beforeXp!==expected)result.rewardCapViolations++;
+    event.attempts++;event[state.result.outcome]++;event.heroDamage+=state.result.damage;
+    if(!validateRun(state).ok)result.invalidStates++;
+    if(state.phase==='gameover')break;
+    if(!resumeRecruitment(state).ok)throw new Error('Encounter did not return to recruitment.');
+    if(!validateRun(state).ok)result.invalidStates++;
+    recruit(state,strategy.id,strategy.id==='blind');
+   }
    const outcome=startCombat(state,{recordTimeline:false});if(!outcome.ok)throw new Error(outcome.message);
    result.combatCount++;if(state.result.reason==='stalemate')result.stalemates++;
    if(!validateRun(state).ok)result.invalidStates++;
    if(state.phase==='result')nextRound(state);
   }
   if(state.phase!=='gameover')result.nonTerminations++;
+  result.totalXp+=state.player.xp;
+  if(rewardGold>3||state.player.xp>3||state.encounters.filter(entry=>entry.outcome==='win').length!==state.player.xp)result.rewardCapViolations++;
   result.totalFinalRound+=state.round;
   if(state.winner==='player')result.wins++;
   else if(state.player.hp===0)result.deathsByRound[state.round]=(result.deathsByRound[state.round]||0)+1;
@@ -102,8 +119,9 @@ for(const strategy of strategies){
  result.winRate=Number((result.wins/seeds).toFixed(4));result.meanFinalRound=Number((result.totalFinalRound/seeds).toFixed(3));
  result.meanDeathRound=deaths?Number((Object.entries(result.deathsByRound).reduce((n,[r,v])=>n+Number(r)*v,0)/deaths).toFixed(3)):null;
  delete result.totalFinalRound;
- results.push(result);console.error(`${strategy.name}: ${result.wins}/${seeds}, unfinished ${result.nonTerminations}, stalemate ${result.stalemates}`);
+ results.push(result);console.error(`${encounterMode}/${strategy.name}: ${result.wins}/${seeds}, unfinished ${result.nonTerminations}, invalid ${result.invalidStates}, reward violations ${result.rewardCapViolations}`);
 }
-const report={seedRange:[1,seeds],elapsedSeconds:Number(((Date.now()-started)/1000).toFixed(2)),config:CONFIG,method:'Same seeded shops/opponents; all policies upgrade at rounds 2/4/7 when affordable. Six faction policies and a neutral heuristic select combinations/duplicates/skills and order guards/support. Blind buys first offer, uses raw attack/health to field five, same upgrade schedule. These are programmed policies, not human win rates.',results};
+const report={seedRange:[1,seeds],campaigns:results.length*seeds,elapsedSeconds:Number(((Date.now()-started)/1000).toFixed(2)),config:CONFIG,method:'Same seeded shops/opponents; all policies upgrade at rounds 2/4/7 when affordable. Six faction policies and a neutral heuristic select combinations/duplicates/skills and order guards/support. Blind buys first offer, uses raw attack/health to field five, same upgrade schedule. Encounter comparison pairs skip versus always attempt after recruitment, then spends the reward with the same recruitment policy. These are programmed policies, not human win rates.',results};
+report.encounterTemplates=[3,6,9].map(round=>getEncounterOffer({round,phase:'recruit',encounters:[]}));
 if(output)writeFileSync(output,JSON.stringify(report,null,2)+'\n');
 console.log(JSON.stringify(report,null,2));

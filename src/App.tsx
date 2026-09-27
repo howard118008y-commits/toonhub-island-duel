@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, ArrowUpRight, Grid2X2, X } from 'lucide-react';
 import { CHARACTERS, type Character } from './characters';
 import { patternImage } from './patterns';
 
-const BRAND_NAME = 'Card & TW ＆ Game';
+const BRAND_NAME = '台灣卡牌';
 const TRANSITION_MS = 650;
 const EASING = 'cubic-bezier(0.4,0,0.2,1)';
 const portraitUrl = (id: number, size = 'hero') => `${import.meta.env.BASE_URL}characters/web/${size}-${String(id).padStart(2, '0')}.webp`;
@@ -150,11 +150,11 @@ export default function App() {
         <p className={`ghost-text absolute inset-x-0 flex items-center justify-center pointer-events-none select-none ${activeCharacter.region.length > 2 ? 'long-region' : ''}`} aria-hidden="true">{activeCharacter.region}</p>
 
         <header className="site-header">
-          <div className="brand-label"><img className="brand-mark brand-logo" src={`${import.meta.env.BASE_URL}brand/logo.svg`} width={40} height={44} alt="" /><span className="brand-name">{BRAND_NAME}<small>臺灣地域自走棋</small></span></div>
+          <div className="brand-label"><img className="brand-mark brand-logo" src={`${import.meta.env.BASE_URL}brand/logo.svg`} width={40} height={44} alt="" /><span className="brand-name">{BRAND_NAME}<small>台卡・單機自走棋冒險</small></span></div>
           <button className="collection-trigger" type="button" onClick={() => collectionDialog.current?.showModal()}><Grid2X2 size={18} aria-hidden="true" />角色圖鑑</button>
         </header>
 
-        <div className="game-pitch"><h1>招募英雄，排陣上場。</h1><p>24 位角色，10 輪單機自動對戰。</p></div>
+        <div className="game-pitch"><h1>開箱，召集你的臺灣隊。</h1><p>24 位角色・10 輪主戰・3 場支線遭遇</p></div>
 
         <div className="carousel absolute inset-0" aria-roledescription="角色輪播" aria-label="二十四位臺灣地域角色，同框四位">
           {CHARACTERS.map((character, index) => {
@@ -185,14 +185,14 @@ export default function App() {
           </div>
         </section>
 
-        <a className="discover-link" href="#play" onClick={event => { event.preventDefault(); openGame(); }} aria-label="開始冒險，開啟單機自走棋"><span><small>免下載・免登入</small>開始冒險</span><ArrowUpRight className="discover-arrow" strokeWidth={1.8} aria-hidden="true" /></a>
+        <a className="discover-link" href="#play" onClick={event => { event.preventDefault(); openGame(); }} aria-label="進入台卡，開啟台灣卡牌單機冒險"><span><small>免下載・免登入</small>進入台卡</span><ArrowUpRight className="discover-arrow" strokeWidth={1.8} aria-hidden="true" /></a>
         <span className="sr-only" role="status" aria-live="polite">第 {activeIndex + 1} 位，共 24 位。{activeCharacter.region}，{activeCharacter.job}。{activeCharacter.quote}</span>
       </main>
 
       <section className="site-reading" aria-labelledby="reading-title">
-        <div className="site-reading-copy"><p className="reading-kicker">{BRAND_NAME} · 臺灣地域自走棋</p><h2 id="reading-title">24 位臺灣角色，一場輕鬆上手的自走棋。</h2><p>免費、免註冊的單機網頁遊戲。招募角色、組合六種羈絆，讓隊伍自動對戰，挑戰十輪冒險。</p></div>
+        <div className="site-reading-copy"><p className="reading-kicker">{BRAND_NAME} · 簡稱台卡</p><h2 id="reading-title">24 位臺灣角色，一場輕鬆上手的自走棋。</h2><p>開箱進入台卡大廳，拖曳招募 24 位地區角色，搭配六種羈絆、排出 5 人隊伍，挑戰 10 輪主戰。第 3、6、9 輪還能選擇打小怪、賺金幣與經驗，提升本局隊伍等級。免費、免註冊，準備好再親手開戰。</p></div>
         <nav className="reading-links" aria-label="遊戲資料">
-          <a href={`${import.meta.env.BASE_URL}guide/`}><span><strong>玩法教學</strong><small>招募、排陣與三合一</small></span><ArrowUpRight size={22} aria-hidden="true" /></a>
+          <a href={`${import.meta.env.BASE_URL}guide/`}><span><strong>玩法教學</strong><small>招募、排陣與小怪成長</small></span><ArrowUpRight size={22} aria-hidden="true" /></a>
           <a href={`${import.meta.env.BASE_URL}characters/`}><span><strong>24 角色圖鑑</strong><small>地區台詞、技能與羈絆</small></span><ArrowUpRight size={22} aria-hidden="true" /></a>
           <a href={`${import.meta.env.BASE_URL}about/`}><span><strong>關於與隱私</strong><small>創作來源與本機存檔</small></span><ArrowUpRight size={22} aria-hidden="true" /></a>
         </nav>
@@ -211,8 +211,8 @@ export default function App() {
 
       <dialog ref={gameDialog} className="game-dialog" aria-labelledby="game-title">
         <div className="game-shell">
-          <header className="game-topbar"><div><h2 id="game-title">{BRAND_NAME}</h2><span>招募 → 排陣 → 自動對戰</span></div><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回首頁</button></header>
-          {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}${import.meta.env.VITE_GAME_ENTRY}`} title={`${BRAND_NAME}｜臺灣地域自走棋`} onLoad={() => sendTheme(activeCharacter)} />}
+          <header className="game-topbar"><div><h2 id="game-title">台卡</h2><span>台灣卡牌・單機冒險</span></div><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回首頁</button></header>
+          {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}${import.meta.env.VITE_GAME_ENTRY}`} title={`${BRAND_NAME}｜單機冒險`} onLoad={() => sendTheme(activeCharacter)} />}
         </div>
       </dialog>
     </div>

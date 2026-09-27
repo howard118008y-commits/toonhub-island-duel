@@ -1,4 +1,5 @@
 import { CONFIG, ROSTER, TRAITS, getCharacter } from './roster.js';
+import { ENCOUNTER_ROUNDS, getEncounterCard, getEncounterDefinition } from './encounters.js';
 
 const contexts = new WeakMap();
 const other = side => side === 'player' ? 'enemy' : 'player';
@@ -105,8 +106,8 @@ export function createRun({ seed = Date.now() >>> 0 } = {}) {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xFFFFFFFF) throw new Error('種子必須是有效的非負整數。');
   const state = {
     schemaVersion: CONFIG.version, seed, rngState: seed, nextUid: 1, round: 1, phase: 'recruit', winner: null,
-    player: { hp: CONFIG.heroHealth, maxHp: CONFIG.heroHealth, gold: 3, income: 3, tier: 1, upgradeCost: CONFIG.upgradeCosts[0], board: [], bench: [] },
-    shop: { offers: [], frozen: false }, opponent: null, combat: null, result: null, pendingReward: null, log: [],
+    player: { hp: CONFIG.heroHealth, maxHp: CONFIG.heroHealth, gold: 3, income: 3, tier: 1, xp: 0, upgradeCost: CONFIG.upgradeCosts[0], board: [], bench: [] },
+    shop: { offers: [], frozen: false }, opponent: null, combat: null, result: null, pendingReward: null, encounters: [], log: [],
   };
   fillShop(state);
   state.opponent = makeOpponent(state);
@@ -150,6 +151,7 @@ export function canReceiveUnit(state, cardId) {
   return state.player.bench.length < CONFIG.benchSize || owned(state).filter(unit => unit.cardId === cardId && !unit.golden).length >= 2;
 }
 function addOwned(state, cardId, changes = []) {
+  requireRule(ROSTER.some(card => card.id === cardId), '小怪無法招募或加入隊伍。');
   requireRule(canReceiveUnit(state, cardId), '備戰區已滿，請先上場、出售角色，或招募可三合一的角色。');
   const zone = 'bench';
   const unit = makeUnit(state, cardId);
@@ -174,6 +176,7 @@ export function sell(state, unitUid) {
     requireRule(zone, '找不到這位角色。');
     const index = state.player[zone].findIndex(unit => unit.uid === unitUid);
     const unit = state.player[zone][index];
+    requireRule(ROSTER.some(card => card.id === unit.cardId), '小怪無法出售。');
     const target = entity(state, 'player', unit, zone);
     state.player[zone].splice(index, 1);
     const change = delta(entity(state, 'player'), state.player, 'gold', state.player.gold + CONFIG.sellValue);
@@ -363,18 +366,41 @@ function attackOnce(state, side, unit) {
   if (card.ability === 'healWeakest') healUnits(state, side, [weakest(state.combat[side])].filter(Boolean), amount, actor);
   if (card.ability === 'healAll') healUnits(state, side, state.combat[side], amount, actor);
 }
+export const getSquadLevel = xp => xp >= 3 ? 3 : xp >= 2 ? 2 : 1;
+export function getEncounterOffer(state) {
+  const definition = getEncounterDefinition(state.round);
+  if (state.phase !== 'recruit' || !definition || state.encounters.some(entry => entry.round === state.round)) return null;
+  return { round: state.round, name: definition.name, tier: definition.tier, reward: { gold: 1, xp: 1 }, lossDamage: 2,
+    board: definition.cards.map((cardId, index) => {
+      const card = getEncounterCard(cardId);
+      const hp = card.health + (definition.healthBonus || 0);
+      return { uid: `encounter-${state.round}-${index}`, cardId, golden: false, attack: card.attack + (definition.attackBonus || 0), hp, maxHp: hp, shield: card.keywords.includes('shield') ? 1 : 0 };
+    }) };
+}
 export function startCombat(state, { recordTimeline = true } = {}) {
+  return resolveCombat(state, 'round', recordTimeline);
+}
+export function startEncounter(state, { recordTimeline = true } = {}) {
+  return resolveCombat(state, 'encounter', recordTimeline);
+}
+function resolveCombat(state, kind, recordTimeline) {
   return action(state, ['recruit'], () => {
     requireRule(!state.pendingReward, '請先選擇三合一獎勵。');
     requireRule(state.player.board.length > 0, state.player.bench.length ? '請先從備戰區選一位角色，上場後再準備開戰。' : '請先招募一位角色，放上棋盤後再準備開戰。');
+    const encounter = getEncounterOffer(state);
+    requireRule(kind !== 'encounter' || encounter, '本輪沒有尚未完成的小怪委託。');
+    const opponent = kind === 'encounter' ? encounter : state.opponent;
+    if (kind === 'round' && encounter) state.encounters.push({ round: state.round, outcome: 'skipped' });
     const battleUnits = units => units.map((unit, order) => ({ ...clone(unit), hp: unit.maxHp, shield: getCharacter(unit.cardId).keywords.includes('shield') ? 1 : 0, order, attacks: 0 }));
     state.phase = 'combat';
-    state.combat = { player: battleUnits(state.player.board), enemy: battleUnits(state.opponent.board), activeSide: 'player', attacks: 0, rngState: roundSeed(state.seed, state.round, 0xBA771E), traits: {}, tideUsed: { player: false, enemy: false } };
+    state.combat = { kind, opponentName: opponent.name, player: battleUnits(state.player.board), enemy: battleUnits(opponent.board), activeSide: 'player', attacks: 0, rngState: roundSeed(state.seed, state.round, kind === 'encounter' ? 0xEC0A : 0xBA771E), traits: {}, tideUsed: { player: false, enemy: false } };
     for (const side of ['player', 'enemy']) {
       state.combat.traits[side] = Object.fromEntries(getSynergies(state.combat[side]).map(trait => [trait.id, trait.level ? CONFIG.traitValues[trait.id][trait.level === 4 ? 1 : 0] : 0]));
     }
-    note(state, `第 ${state.round} 輪自動戰鬥開始。`);
+    note(state, kind === 'encounter' ? `小怪委託：${opponent.name}。` : `第 ${state.round} 輪自動戰鬥開始。`);
     emit(state, 'phase');
+    const squadLevel = getSquadLevel(state.player.xp);
+    if (squadLevel >= 2) combatBonus(state, 'player', [state.combat.player[0]], squadLevel >= 3 ? 1 : 0, 1);
     const firstSide = state.combat.player.length === state.combat.enemy.length ? (random(state.combat) < 0.5 ? 'player' : 'enemy') : state.combat.player.length > state.combat.enemy.length ? 'player' : 'enemy';
     for (const side of ['player', 'enemy']) {
       const units = state.combat[side];
@@ -401,21 +427,43 @@ export function startCombat(state, { recordTimeline = true } = {}) {
     }
     const timeout = state.combat.player.length > 0 && state.combat.enemy.length > 0;
     const outcome = timeout || !state.combat.player.length && !state.combat.enemy.length ? 'draw' : state.combat.player.length ? 'win' : 'loss';
-    const damageAmount = outcome === 'loss' ? Math.min(state.player.hp, CONFIG.damageCap, state.opponent.tier + state.combat.enemy.reduce((sum, unit) => sum + getCharacter(unit.cardId).tier, 0)) : 0;
+    const damageAmount = outcome === 'loss' ? Math.min(state.player.hp, kind === 'encounter' ? 2 : Math.min(CONFIG.damageCap, opponent.tier + state.combat.enemy.reduce((sum, unit) => sum + getCharacter(unit.cardId).tier, 0))) : 0;
     if (damageAmount) {
       const change = delta(entity(state, 'player'), state.player, 'hp', Math.max(0, state.player.hp - damageAmount));
       emit(state, 'damage', 'enemy', { target: entity(state, 'player'), changes: [change] });
     }
-    state.result = { outcome, damage: damageAmount, round: state.round, reason: timeout ? 'stalemate' : 'normal' };
-    state.phase = state.player.hp <= 0 || state.round === CONFIG.rounds ? 'gameover' : 'result';
+    const rewards = [];
+    if (kind === 'encounter') {
+      state.encounters.push({ round: state.round, outcome });
+      if (outcome === 'win') {
+        rewards.push(delta(entity(state, 'player'), state.player, 'gold', state.player.gold + 1));
+        rewards.push(delta(entity(state, 'player'), state.player, 'xp', state.player.xp + 1));
+      }
+    }
+    state.result = { kind, outcome, damage: damageAmount, round: state.round, reason: timeout ? 'stalemate' : 'normal',
+      ...(kind === 'encounter' ? { encounterId: state.round, reward: { gold: outcome === 'win' ? 1 : 0, xp: outcome === 'win' ? 1 : 0 } } : {}) };
+    state.phase = state.player.hp <= 0 || kind === 'round' && state.round === CONFIG.rounds ? 'gameover' : 'result';
     if (state.phase === 'gameover') state.winner = state.player.hp > 0 && outcome === 'win' && state.round === CONFIG.rounds ? 'player' : 'enemy';
-    note(state, outcome === 'win' ? '本輪獲勝！' : outcome === 'draw' ? '本輪平手，英雄不扣生命。' : `本輪失利，英雄受到 ${damageAmount} 點傷害。`);
-    emit(state, 'result');
+    note(state, kind === 'encounter'
+      ? outcome === 'win' ? '委託完成！獲得 1 金幣、1 隊伍經驗，回旅店繼續準備。' : outcome === 'draw' ? '委託平手，不扣生命、沒有獎勵，本次機會已使用。' : `委託失利，扣除 ${damageAmount} 點生命，本次機會已使用。`
+      : outcome === 'win' ? '本輪獲勝！' : outcome === 'draw' ? '本輪平手，英雄不扣生命。' : `本輪失利，英雄受到 ${damageAmount} 點傷害。`);
+    emit(state, 'result', 'player', { changes: rewards });
     if (state.winner) { note(state, state.winner === 'player' ? '十輪闖關成功！這座島交給你了。' : '這次挑戰告一段落，重整陣容再來。'); emit(state, 'winner', state.winner); }
   }, recordTimeline);
 }
+export function resumeRecruitment(state) {
+  return action(state, ['result'], () => {
+    requireRule(state.result?.kind === 'encounter' && state.player.hp > 0, '目前沒有可以返回旅店的小怪結算。');
+    state.phase = 'recruit';
+    state.combat = null;
+    state.result = null;
+    note(state, '已回到同一輪旅店，金幣、商店與站位保留；準備好了再開戰。');
+    emit(state, 'phase');
+  });
+}
 export function nextRound(state) {
   return action(state, ['result'], () => {
+    requireRule(state.result?.kind === 'round', '小怪委託結束後，請先回到同一輪旅店。');
     requireRule(state.round < CONFIG.rounds && state.player.hp > 0, '對局已結束。');
     state.round++;
     state.phase = 'recruit';
@@ -438,13 +486,15 @@ export function validateRun(state) {
     requireRule(['recruit', 'result', 'gameover'].includes(state.phase), '存檔階段無效。');
     requireRule(number(state.seed, 0, 0xFFFFFFFF) && number(state.rngState, 0, 0xFFFFFFFF) && number(state.nextUid, 1, 1000000), '亂數或編號資料無效。');
     requireRule(number(state.round, 1, CONFIG.rounds), '輪次無效。');
+    requireRule(Array.isArray(state.encounters) && state.encounters.length <= ENCOUNTER_ROUNDS.length && state.encounters.every((entry, index) => entry && ENCOUNTER_ROUNDS.includes(entry.round) && entry.round <= state.round && ['win', 'loss', 'draw', 'skipped'].includes(entry.outcome) && (!index || entry.round > state.encounters[index - 1].round)), '委託紀錄無效。');
     const p = state.player;
     requireRule(p && number(p.hp, 0, CONFIG.heroHealth) && p.maxHp === CONFIG.heroHealth && number(p.gold, 0, 50) && p.income === Math.min(CONFIG.maxGold, state.round + 2) && number(p.tier, 1, 4) && number(p.upgradeCost, p.tier === 4 ? 0 : 1, 9), '玩家資料無效。');
+    requireRule(number(p.xp, 0, 3) && p.xp === state.encounters.filter(entry => entry.outcome === 'win').length, '隊伍經驗與委託紀錄不符。');
     const ids = new Set();
-    const validUnit = (unit, seen, allowToken = false) => {
+    const validUnit = (unit, seen, allowToken = false, allowMonster = false) => {
       requireRule(unit && typeof unit.uid === 'string' && unit.uid.length < 80 && !seen.has(unit.uid), '角色編號重複或無效。');
       seen.add(unit.uid);
-      requireRule(ROSTER.some(card => card.id === unit.cardId) || allowToken && unit.cardId === 101, '未知角色。');
+      requireRule(ROSTER.some(card => card.id === unit.cardId) || allowToken && unit.cardId === 101 || allowMonster && Boolean(getEncounterCard(unit.cardId)), '未知角色。');
       requireRule(typeof unit.golden === 'boolean' && number(unit.attack, 1, 10000) && number(unit.hp, 0, 10000) && number(unit.maxHp, 1, 10000) && unit.hp <= unit.maxHp && [0, 1].includes(unit.shield), '角色數值無效。');
     };
     for (const [zone, cap] of [['board', CONFIG.boardSize], ['bench', CONFIG.benchSize]]) {
@@ -461,10 +511,16 @@ export function validateRun(state) {
     requireRule(state.phase === 'gameover' ? ['player', 'enemy'].includes(state.winner) : state.winner === null, '勝負資料無效。');
     if (state.phase === 'recruit') requireRule(state.result === null && state.combat === null && p.hp > 0, '招募進程無效。');
     else {
-      requireRule(state.result && ['win', 'loss', 'draw'].includes(state.result.outcome) && state.result.round === state.round && number(state.result.damage, 0, CONFIG.damageCap) && ['normal', 'stalemate'].includes(state.result.reason), '結算資料無效。');
-      requireRule(state.combat && ['player', 'enemy'].includes(state.combat.activeSide) && number(state.combat.attacks, 0, CONFIG.maxAttacks), '戰鬥資料無效。');
+      requireRule(state.result && ['round', 'encounter'].includes(state.result.kind) && ['win', 'loss', 'draw'].includes(state.result.outcome) && state.result.round === state.round && number(state.result.damage, 0, CONFIG.damageCap) && ['normal', 'stalemate'].includes(state.result.reason), '結算資料無效。');
+      const encounter = state.result.kind === 'encounter';
+      if (encounter) {
+        requireRule(state.result.encounterId === state.round && state.encounters.some(entry => entry.round === state.round && entry.outcome === state.result.outcome), '委託結算與紀錄不符。');
+        const reward = state.result.outcome === 'win' ? 1 : 0;
+        requireRule(state.result.reward?.gold === reward && state.result.reward?.xp === reward && state.result.damage <= 2 && (state.result.outcome === 'loss' || state.result.damage === 0), '委託獎勵或傷害無效。');
+      }
+      requireRule(state.combat && state.combat.kind === state.result.kind && typeof state.combat.opponentName === 'string' && state.combat.opponentName.length <= 80 && ['player', 'enemy'].includes(state.combat.activeSide) && number(state.combat.attacks, 0, CONFIG.maxAttacks), '戰鬥資料無效。');
       const combatIds = new Set();
-      for (const side of ['player', 'enemy']) { requireRule(Array.isArray(state.combat[side]) && state.combat[side].length <= CONFIG.boardSize, '戰鬥容量無效。'); state.combat[side].forEach(unit => validUnit(unit, combatIds, true)); }
+      for (const side of ['player', 'enemy']) { requireRule(Array.isArray(state.combat[side]) && state.combat[side].length <= CONFIG.boardSize, '戰鬥容量無效。'); state.combat[side].forEach(unit => validUnit(unit, combatIds, true, encounter && side === 'enemy')); }
       requireRule(state.phase !== 'result' || state.round < CONFIG.rounds && p.hp > 0, '結算階段不可重複通關。');
       requireRule(state.phase !== 'gameover' || p.hp === 0 || state.round === CONFIG.rounds, '對局尚未結束。');
       if (state.phase === 'gameover') requireRule(state.winner === (state.round === CONFIG.rounds && p.hp > 0 && state.result.outcome === 'win' ? 'player' : 'enemy'), '通關條件無效。');

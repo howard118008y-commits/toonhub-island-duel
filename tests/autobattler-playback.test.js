@@ -3,7 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import * as engine from '../public/game/src/autobattler.js';
-import { CONFIG, TRAITS, getCharacter } from '../public/game/src/roster.js';
+import { CONFIG, ROSTER, TRAITS, getCharacter } from '../public/game/src/roster.js';
 import { loadRun, saveRun, clearRun } from '../public/game/src/storage.js';
 
 // Execute the real UI controller with its engine and storage. Only browser
@@ -19,11 +19,11 @@ function prepared() {
   state.opponent.board = [unit(4, 7)];
   return state;
 }
-function harness() {
+function harness(state = prepared()) {
   const data = new Map(), pending = [], calls = [], timers = new Map(), warnings = [];
   let saves = 0, timerId = 0, qa;
   const store = { getItem: key => data.get(key) ?? null, setItem(key, value) { saves++; data.set(key, value); }, removeItem: key => data.delete(key) };
-  saveRun(prepared(), store); saves = 0;
+  saveRun(state, store); saves = 0;
   function eventTarget() {
     const listeners = new Map();
     return {
@@ -33,23 +33,33 @@ function harness() {
       count(name) { return listeners.get(name)?.size || 0; },
     };
   }
-  function element() { return { ...eventTarget(), innerHTML: '', textContent: '', open: false, dataset: {}, querySelector: () => null, querySelectorAll: () => [], showModal() { this.open = true; }, close() { this.open = false; }, scrollIntoView() {} }; }
+  function element() { return { ...eventTarget(), innerHTML: '', textContent: '', open: false, dataset: {}, style: {}, children: [], classList: { add() {}, remove() {} },
+    querySelector: () => null, querySelectorAll: () => [], showModal() { this.open = true; }, close() { this.open = false; }, scrollIntoView() {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 120 }), cloneNode: () => element(), setAttribute() {}, removeAttribute() {},
+    append(node) { node.parent = this; this.children.push(node); }, remove() { if (this.parent) this.parent.children = this.parent.children.filter(node => node !== this); },
+  }; }
   const app = element(), dialog = element(), live = element();
-  const document = { ...eventTarget(), hidden: false, activeElement: null, querySelector: selector => selector === '#app' ? app : selector === '#game-dialog' ? dialog : live };
+  const document = { ...eventTarget(), body: element(), hidden: false, activeElement: null, querySelector: selector => selector === '#app' ? app : selector === '#game-dialog' ? dialog : live };
   const window = { ...eventTarget(), scrollTo() {}, matchMedia: () => ({ matches: false }) };
   const fx = {
     capture: () => ({}), sync() {},
     cancel() { while (pending.length) pending.shift()(); },
     play(step) { calls.push({ step, shown: copy(qa.shown()) }); return new Promise(resolve => pending.push(resolve)); },
   };
-  const context = vm.createContext({ ...engine, CONFIG, TRAITS, getCharacter, structuredClone, URL, AbortController, document, window,
+  const context = vm.createContext({ ...engine, CONFIG, ROSTER, TRAITS, getCharacter, structuredClone, URL, AbortController, document, window,
     console: { warn: (...args) => warnings.push(args), error: (...args) => warnings.push(args) },
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id),
+    requestAnimationFrame(fn) { const id = ++timerId; timers.set(id, { fn, delay: 16 }); return id; }, cancelAnimationFrame: id => timers.delete(id),
     createBattleEffects: () => fx, loadRun: () => loadRun(store), saveRun: state => saveRun(state, store), clearRun: () => clearRun(store), installThemeBridge() {},
   });
   vm.runInContext(source + '\nglobalThis.__qa = { act, newRun, run: () => run, shown: () => shown, busy: () => busy };', context, { filename: 'autobattler-app.js' });
   qa = context.__qa;
-  const click = action => document.dispatch('click', { target: { closest: () => ({ disabled: false, dataset: { action } }) } });
+  const click = (action, extra = {}) => document.dispatch('click', { preventDefault() {}, target: { closest: () => ({ disabled: false, dataset: { action, ...extra } }) } });
+  // Stored adventures now enter through the real lobby action. Preserve every
+  // combat recovery assertion instead of bypassing the new presentation flow.
+  click('enter-lobby');
+  click('continue');
+  const visibilityBaseline = document.count('visibilitychange');
   const visible = value => { document.hidden = !value; document.dispatch('visibilitychange'); };
   async function drain(promise) {
     let done = false; promise.then(() => { done = true; }, () => { done = true; });
@@ -61,7 +71,18 @@ function harness() {
     let done = false; promise.then(() => { done = true; }, () => { done = true; });
     await tick(); assert(done, 'cancelled/failed playback must settle'); await promise;
   }
-  return { qa, fx, calls, pending, timers, warnings, document, app, live, click, visible, drain, settled, store, get saves() { return saves; } };
+  async function finishAction() { for (let index = 0; index < 600 && qa.busy(); index++) { pending.shift()?.(); await tick(); } assert.equal(qa.busy(), false); }
+  function drag(kind, uid, destination, cancel = false) {
+    const source = element(); source.dataset[kind === 'offer' ? 'dragOffer' : 'dragUid'] = uid;
+    const face = { disabled: false, closest: () => source };
+    const target = destination ? { dataset: destination, classList: { add() {} } } : null;
+    document.elementFromPoint = () => target && { closest: () => target };
+    const event = { pointerId: 1, isPrimary: true, button: 0, clientX: 10, clientY: 10, preventDefault() {}, target: { closest: () => face } };
+    app.dispatch('pointerdown', event); app.dispatch('pointermove', { ...event, clientX: 30, clientY: 60 });
+    app.dispatch(cancel ? 'pointercancel' : 'pointerup', { ...event, clientX: 30, clientY: 60 });
+    app.dispatch('pointerup', { ...event, clientX: 30, clientY: 60 }); // A duplicated release cannot purchase twice.
+  }
+  return { qa, fx, calls, pending, timers, warnings, document, app, live, click, visible, drain, settled, finishAction, drag, store, visibilityBaseline, get saves() { return saves; } };
 }
 
 test('animation rejection or missing capture recovers to the saved result without rerunning combat', async () => {
@@ -130,7 +151,7 @@ test('hidden pages pause and resume the interrupted visual step without resolvin
   assert.equal(h.calls.at(-1).step, first, 'resume replays the interrupted step');
   await h.drain(play);
   assert.equal(h.qa.busy(), false); assert.equal(h.saves, 1);
-  assert.equal(h.document.count('visibilitychange'), 0);
+  assert.equal(h.document.count('visibilitychange'), h.visibilityBaseline);
   assert.equal(h.timers.size, 0);
 });
 
@@ -142,7 +163,7 @@ test('restart while hidden releases the visibility wait and cannot pollute the f
   h.visible(true); await tick();
   assert.equal(h.qa.run().phase, 'recruit'); assert.equal(h.qa.run().round, 1);
   assert.equal(h.qa.busy(), false); assert.equal(h.calls.length, 0);
-  assert.equal(h.document.count('visibilitychange'), 0);
+  assert.equal(h.document.count('visibilitychange'), h.visibilityBaseline);
   assert.equal(h.timers.size, 0);
 });
 
@@ -170,7 +191,69 @@ test('50 rapid skip/restart cycles release listeners and timers without late sta
     h.visible(true); await h.settled(play);
     assert.deepEqual(h.qa.shown(), fresh);
     assert.equal(h.qa.busy(), false); assert.equal(h.pending.length, 0);
-    assert.equal(h.document.count('visibilitychange'), 0); assert.equal(h.timers.size, 0);
+    assert.equal(h.document.count('visibilitychange'), h.visibilityBaseline); assert.equal(h.timers.size, 0);
   }
   assert.equal(h.saves, 100, 'each round resolves and each new run saves exactly once');
+});
+
+test('encounter skip, animation failure and restart cannot replay or duplicate the saved reward', async () => {
+  for (const interruption of ['skip', 'failure', 'restart']) {
+    const state = prepared(); Object.assign(state.player.board[0], { attack: 100, hp: 100, maxHp: 100 });
+    while (state.round < 3) { engine.startCombat(state, { recordTimeline: false }); engine.nextRound(state); }
+    const h = harness(state), gold = state.player.gold;
+    if (interruption === 'failure') h.fx.play = () => Promise.reject(new Error('animation interrupted'));
+    const play = h.qa.act(engine.startEncounter); await tick();
+    const saved = loadRun(h.store).state;
+    assert.equal(saved.result.kind, 'encounter'); assert.equal(saved.player.gold, gold + 1); assert.equal(saved.player.xp, 1); assert.equal(h.saves, 1);
+    if (interruption === 'skip') h.click('skip');
+    if (interruption === 'restart') h.qa.newRun();
+    await h.settled(play);
+    if (interruption === 'restart') {
+      assert.equal(h.qa.run().player.xp, 0); assert.equal(h.qa.run().round, 1); assert.deepEqual(h.qa.run().encounters, []);
+      assert.equal(loadRun(h.store).state.player.xp, 0);
+    } else {
+      assert.deepEqual(h.qa.shown(), saved); assert.equal(h.qa.busy(), false);
+      await h.drain(h.qa.act(engine.resumeRecruitment)); await h.qa.act(engine.startEncounter);
+      assert.equal(h.qa.run().player.gold, gold + 1); assert.equal(h.qa.run().player.xp, 1); assert.equal(h.saves, 2);
+      assert.equal(h.qa.run().phase, 'recruit'); assert.equal(h.qa.run().round, 3);
+    }
+    assert.equal(h.timers.size, 0); assert.equal(h.document.count('visibilitychange'), h.visibilityBaseline);
+  }
+});
+
+test('pointer purchases are atomic, cancelled or blocked drops are free, and owned cards still reorder', async () => {
+  const h = harness(), offer = h.qa.run().shop.offers[0];
+  h.drag('offer', offer.uid, { buyZone: 'bench' });
+  h.click('buy', { uid: offer.uid }); // Synthetic click following a drag is suppressed.
+  await h.finishAction();
+  assert.equal(h.qa.run().player.gold, 0); assert.equal(h.qa.run().player.bench.length, 1); assert.equal(h.saves, 1);
+  assert.equal(h.qa.run().player.bench[0].cardId, offer.cardId); assert.equal(h.qa.run().player.board.length, 1);
+  assert.equal(h.document.body.children.length, 0); assert.equal(h.timers.size, 0);
+  for (const blocked of ['cancel', 'outside', 'no-gold', 'full', 'reward']) {
+    const state = prepared(), offer = state.shop.offers[0];
+    if (blocked === 'no-gold') state.player.gold = 2;
+    if (blocked === 'full') state.player.bench = ROSTER.filter(card => card.id !== offer.cardId && card.id !== 9).slice(0, 3).map(card => ({ uid: `u-${state.nextUid++}`, cardId: card.id, attack: card.attack, hp: card.health, maxHp: card.health, golden: false, shield: card.keywords.includes('shield') ? 1 : 0 }));
+    if (blocked === 'reward') state.pendingReward = { choices: ROSTER.filter(card => card.tier === 2).slice(0, 3).map(card => card.id) };
+    const blockedHarness = harness(state), before = copy(blockedHarness.qa.run());
+    blockedHarness.drag('offer', offer.uid, blocked === 'outside' ? null : { buyZone: 'bench' }, blocked === 'cancel');
+    await blockedHarness.finishAction();
+    assert.deepEqual(blockedHarness.qa.run(), before, blocked); assert.equal(blockedHarness.saves, 0);
+    assert.equal(blockedHarness.document.body.children.length, 0); assert.equal(blockedHarness.timers.size, 0);
+  }
+  const state = prepared(); state.player.board.push({ ...state.player.board[0], uid: `u-${state.nextUid++}` });
+  const mover = harness(state), first = state.player.board[0].uid;
+  mover.drag('unit', first, { dropZone: 'board', dropIndex: '1' }); await mover.finishAction();
+  assert.equal(mover.qa.run().player.board[1].uid, first); assert.equal(mover.qa.run().player.gold, 3);
+  assert.equal(mover.document.body.children.length, 0); assert.equal(mover.timers.size, 0);
+});
+
+test('an empty first-round adventure continues from the lobby without resetting spent gold or the shop', async () => {
+  const h = harness(); h.qa.newRun();
+  await h.drain(h.qa.act(engine.refreshShop)); await h.drain(h.qa.act(engine.toggleFreeze));
+  assert.equal(h.qa.run().player.board.length, 0); assert.equal(h.qa.run().player.bench.length, 0);
+  assert.equal(h.qa.run().player.gold, 2); assert.equal(h.qa.run().shop.frozen, true);
+  const before = copy(h.qa.run()), saves = h.saves;
+  h.click('lobby'); assert.match(h.app.innerHTML, /data-action="continue"/);
+  h.click('continue'); assert.deepEqual(h.qa.run(), before); assert.deepEqual(loadRun(h.store).state, before);
+  assert.equal(h.saves, saves); assert.equal(h.timers.size, 0);
 });

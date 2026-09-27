@@ -95,10 +95,10 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--theme-ink,#173c31);
   .discover-link{left:18px;right:18px;bottom:20px;min-height:74px;padding:13px 18px;font-size:27px;border-radius:14px}
   .discover-link small{font-size:12px;margin-bottom:2px}
   .discover-arrow{width:27px;height:27px}
-  .game-topbar{flex-basis:56px;padding:6px 10px;gap:8px}
+  .game-topbar{flex-basis:44px;padding:0 10px;gap:8px}
   .game-topbar h2{display:block;font-size:14px}
   .game-topbar span{display:none}
-  .return-home{font-size:13px;padding:9px 10px}
+  .return-home{font-size:13px;padding:6px 10px}
   .collection-dialog{width:calc(100% - 20px);max-height:92dvh;border-radius:16px}
   .collection-header{padding:16px;gap:10px}.collection-header h2{font-size:23px}.collection-header p{font-size:13px}
   .collection-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px}

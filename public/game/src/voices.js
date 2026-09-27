@@ -1,3 +1,5 @@
+import { getEncounterCard } from './encounters.js';
+
 export const CHARACTER_VOICES = {
   1: {
     summon: '別急，先喝杯咖啡。',
@@ -162,6 +164,6 @@ const GENERIC_VOICES = {
 export function characterVoice(id, kind) {
   const lines = id === 101 || id === '101'
     ? TOKEN_VOICES
-    : Object.hasOwn(CHARACTER_VOICES, id) ? CHARACTER_VOICES[id] : GENERIC_VOICES;
+    : Object.hasOwn(CHARACTER_VOICES, id) ? CHARACTER_VOICES[id] : getEncounterCard(id)?.voices || GENERIC_VOICES;
   return typeof lines[kind] === 'string' ? lines[kind] : GENERIC_VOICES.summon;
 }
