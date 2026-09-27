@@ -1,25 +1,32 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ArrowLeft, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUpRight, Grid2X2, X } from 'lucide-react';
 import { CHARACTERS, type Character } from './characters';
 import { patternImage } from './patterns';
 
 const BRAND_NAME = 'Card & TW ＆ Game';
 const TRANSITION_MS = 650;
 const EASING = 'cubic-bezier(0.4,0,0.2,1)';
-const portraitUrl = (id: number) => `${import.meta.env.BASE_URL}characters/portrait-${String(id).padStart(2, '0')}.png`;
+const portraitUrl = (id: number, size = 'hero') => `${import.meta.env.BASE_URL}characters/web/${size}-${String(id).padStart(2, '0')}.webp`;
 type Role = 'center' | 'left' | 'right' | 'back' | 'hidden';
 
 function figureStyle(role: Role, isMobile: boolean): CSSProperties {
-  const shared: CSSProperties = {
-    position: 'absolute', aspectRatio: '2 / 3',
-    transition: `transform ${TRANSITION_MS}ms ${EASING}, filter ${TRANSITION_MS}ms ${EASING}, opacity ${TRANSITION_MS}ms ${EASING}, left ${TRANSITION_MS}ms ${EASING}, height ${TRANSITION_MS}ms ${EASING}, bottom ${TRANSITION_MS}ms ${EASING}`,
-    willChange: 'transform, filter, opacity',
-    transform: 'translateX(-50%) scale(1)',
+  const height = 124;
+  const baseBottom = isMobile ? -37 : -36;
+  const placements = {
+    center: [50, height, baseBottom, 20, 1, 0],
+    left: [isMobile ? 13 : 20, isMobile ? 23 : 36, isMobile ? 35 : 34, 10, .9, 1.5],
+    right: [isMobile ? 87 : 82, isMobile ? 23 : 36, isMobile ? 35 : 14, 10, .9, 1.5],
+    back: [isMobile ? 78 : 77, isMobile ? 17 : 25, isMobile ? 64 : 57, 5, .8, 3],
+    hidden: [50, 16, 30, 0, 0, 4],
   };
-  if (role === 'center') return { ...shared, filter: 'blur(0px)', opacity: 1, zIndex: 20, left: '50%', height: isMobile ? '124%' : '130%', bottom: isMobile ? '-37%' : '-35%' };
-  if (role === 'back') return { ...shared, filter: 'blur(3px)', opacity: 0.8, zIndex: 5, left: isMobile ? '78%' : '77%', height: isMobile ? '17%' : '25%', bottom: isMobile ? '64%' : '57%' };
-  if (role === 'hidden') return { ...shared, filter: 'blur(4px)', opacity: 0, zIndex: 0, left: '50%', height: isMobile ? '13%' : '20%', bottom: isMobile ? '40%' : '20%' };
-  return { ...shared, filter: 'blur(1.5px)', opacity: 0.9, zIndex: 10, left: role === 'left' ? (isMobile ? '13%' : '20%') : (isMobile ? '87%' : '82%'), height: isMobile ? '23%' : '36%', bottom: isMobile ? '35%' : role === 'left' ? '34%' : '14%' };
+  const [left, figureHeight, bottom, zIndex, opacity, blur] = placements[role];
+  return {
+    position: 'absolute', aspectRatio: '2 / 3', left: '50%', height: `${height}%`, bottom: `${baseBottom}%`,
+    transformOrigin: 'center bottom',
+    transform: `translateX(-50%) translate3d(${left - 50}vw, ${-(bottom - baseBottom) / height * 100}%, 0) scale(${figureHeight / height})`,
+    transition: `transform ${TRANSITION_MS}ms ${EASING}, opacity ${TRANSITION_MS}ms ${EASING}`,
+    willChange: role === 'hidden' ? undefined : 'transform, opacity', filter: `blur(${blur}px)`, zIndex, opacity,
+  };
 }
 
 export default function App() {
@@ -36,6 +43,7 @@ export default function App() {
   const animationLock = useRef(false);
   const gameDialog = useRef<HTMLDialogElement>(null);
   const gameFrame = useRef<HTMLIFrameElement>(null);
+  const collectionDialog = useRef<HTMLDialogElement>(null);
   const activeCharacter = CHARACTERS[activeIndex];
 
   useEffect(() => {
@@ -50,7 +58,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    [0, -1, 1, 2, 3].forEach(offset => {
+    [0, -1, 1, 2].forEach(offset => {
       const character = CHARACTERS[(activeIndex + offset + CHARACTERS.length) % CHARACTERS.length];
       if (portraitRequests.current.has(character.id)) return;
       portraitRequests.current.add(character.id);
@@ -107,6 +115,14 @@ export default function App() {
     sendTheme(activeCharacter);
   }
 
+  function selectCharacter(index: number) {
+    if (animationTimer.current !== null) window.clearTimeout(animationTimer.current);
+    animationLock.current = false;
+    setIsAnimating(false);
+    setActiveIndex(index);
+    collectionDialog.current?.close();
+  }
+
   function getRole(index: number): Role {
     if (index === activeIndex) return 'center';
     if (index === (activeIndex + CHARACTERS.length - 1) % CHARACTERS.length) return 'left';
@@ -133,9 +149,11 @@ export default function App() {
         <h1 className={`ghost-text absolute inset-x-0 flex items-center justify-center pointer-events-none select-none ${activeCharacter.region.length > 2 ? 'long-region' : ''}`}>{activeCharacter.region}</h1>
 
         <header className="site-header">
-          <div className="brand-label"><span className="brand-mark" aria-hidden="true">嶼</span><span className="brand-name">{BRAND_NAME}<small>24位臺灣地域角色，選12張組牌。<br />點卡出場，全隊進攻。</small></span></div>
-          <button className="play-trigger" type="button" onClick={openGame}>開始卡牌對戰 <ArrowUpRight size={16} strokeWidth={1.8} aria-hidden="true" /></button>
+          <div className="brand-label"><span className="brand-mark" aria-hidden="true">嶼</span><span className="brand-name">{BRAND_NAME}<small>臺灣地域自走棋</small></span></div>
+          <button className="collection-trigger" type="button" onClick={() => collectionDialog.current?.showModal()}><Grid2X2 size={18} aria-hidden="true" />角色圖鑑</button>
         </header>
+
+        <div className="game-pitch"><strong>招募英雄，排陣上場。</strong><p>24 位角色，10 輪單機自動對戰。</p></div>
 
         <div className="carousel absolute inset-0" aria-roledescription="角色輪播" aria-label="二十四位臺灣地域角色，同框四位">
           {CHARACTERS.map((character, index) => {
@@ -143,7 +161,7 @@ export default function App() {
             return (
               <div key={character.id} className={`carousel-figure role-${role}`} style={figureStyle(role, isMobile)} data-role={role} data-card-id={character.id} aria-hidden={role !== 'center'}>
                 {loadedPortraits.has(character.id) ? (
-                  <img className="character-portrait" src={portraitUrl(character.id)} alt={`${character.region}・${character.job}`} draggable={false} decoding="async" fetchPriority={role === 'center' ? 'high' : 'low'} />
+                  <img className="character-portrait" src={portraitUrl(character.id)} width={1024} height={1536} alt={`${character.region}・${character.job}`} draggable={false} decoding="async" fetchPriority={role === 'center' ? 'high' : 'low'} />
                 ) : (
                   <div className="character-sprite" role="img" aria-label={`${character.region}・${character.job}`} style={{ backgroundImage: loadedSheets.has(character.sheet) ? `url("${import.meta.env.BASE_URL}characters/${character.sheet}")` : undefined, backgroundPosition: `${character.spriteX}% ${character.spriteY}%` }}>
                     {!loadedSheets.has(character.sheet) && <div className="sprite-placeholder"><span>{character.region}</span><small>角色插圖載入中</small></div>}
@@ -166,14 +184,24 @@ export default function App() {
           </div>
         </section>
 
-        <a className="discover-link" href="#play" onClick={event => { event.preventDefault(); openGame(); }} aria-label="開始對決，開啟臺灣地域卡牌遊戲"><span><small>把你的日常，打成主場。</small>開始對決</span><ArrowUpRight className="discover-arrow" strokeWidth={1.8} aria-hidden="true" /></a>
+        <a className="discover-link" href="#play" onClick={event => { event.preventDefault(); openGame(); }} aria-label="開始冒險，開啟單機自走棋"><span><small>免下載・免登入</small>開始冒險</span><ArrowUpRight className="discover-arrow" strokeWidth={1.8} aria-hidden="true" /></a>
         <span className="sr-only" role="status" aria-live="polite">第 {activeIndex + 1} 位，共 24 位。{activeCharacter.region}，{activeCharacter.job}。{activeCharacter.quote}</span>
       </main>
 
+      <dialog ref={collectionDialog} className="collection-dialog" aria-labelledby="collection-title">
+        <header className="collection-header"><div><h2 id="collection-title">找找你的主場</h2><p>24 個地區，24 種上場的個性。</p></div><button className="icon-button" type="button" onClick={() => collectionDialog.current?.close()} aria-label="關閉角色圖鑑"><X size={22} aria-hidden="true" /></button></header>
+        <div className="collection-grid">{CHARACTERS.map((character, index) => (
+          <button key={character.id} className="collection-card" type="button" onClick={() => selectCharacter(index)} aria-label={`查看${character.region}・${character.job}`} aria-pressed={index === activeIndex} style={{ '--character-bg': character.bg } as CSSProperties}>
+            <img src={portraitUrl(character.id, 'card')} width={320} height={480} alt="" loading="lazy" decoding="async" />
+            <span><strong>{character.region}</strong><small>{character.job}</small></span>
+          </button>
+        ))}</div>
+      </dialog>
+
       <dialog ref={gameDialog} className="game-dialog" aria-labelledby="game-title">
         <div className="game-shell">
-          <header className="game-topbar"><div><h2 id="game-title">{BRAND_NAME}</h2><span>你的對局會保留，隨時回來繼續。</span></div><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回首頁</button></header>
-          {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}game/index.html?v=20260925-battle-3`} title={`${BRAND_NAME} — 臺灣地域卡牌對戰`} onLoad={() => sendTheme(activeCharacter)} />}
+          <header className="game-topbar"><div><h2 id="game-title">{BRAND_NAME}</h2><span>招募 → 排陣 → 自動對戰</span></div><button className="return-home" type="button" onClick={() => gameDialog.current?.close()}><ArrowLeft size={16} aria-hidden="true" /> 返回首頁</button></header>
+          {hasOpenedGame && <iframe ref={gameFrame} className="game-frame" src={`${import.meta.env.BASE_URL}${import.meta.env.VITE_GAME_ENTRY}`} title={`${BRAND_NAME}｜臺灣地域自走棋`} onLoad={() => sendTheme(activeCharacter)} />}
         </div>
       </dialog>
     </div>

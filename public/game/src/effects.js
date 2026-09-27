@@ -1,5 +1,5 @@
-import { getCard } from './cards.js';
-import { characterVoice } from './voices.js?v=20260925-battle-3';
+import { getCharacter as getCard } from './roster.js';
+import { characterVoice } from './voices.js';
 
 const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
 const EASE_MOVE = 'cubic-bezier(0.77, 0, 0.175, 1)';
@@ -36,18 +36,22 @@ export function createBattleEffects({ root }) {
           rect: bounds(hero.querySelector('.hero-health') || hero),
           element: hero.querySelector('.hero-emblem') || hero,
         });
-        const energy = root.querySelector(`[data-energy="${side}"]`) || hero.querySelector('.mana-label');
+        const energy = root.querySelector(`[data-gold="${side}"]`);
         if (energy) frame.energy.set(side, { rect: bounds(energy), element: energy });
       }
-      const board = root.querySelector(`.${side}-board`);
-      if (!board) continue;
-      frame.slots.set(side, Array.from(board.children, element => bounds(element)));
-      board.querySelectorAll('[data-card-uid]').forEach((element, slot) => {
-        frame.entities.set(keyOf({ side, kind: 'card', uid: element.dataset.cardUid }), {
-          rect: bounds(element), element, slot,
-          cardId: Number(element.querySelector('[data-id]')?.dataset.id),
+      for (const zone of ['board', 'bench']) {
+        const board = root.querySelector(`.${side}-${zone}`);
+        if (!board || !bounds(board).width) continue;
+        frame.slots.set(`${side}:${zone}`, Array.from(board.children, element => bounds(element)));
+        board.querySelectorAll('[data-card-uid]').forEach((element, slot) => {
+          const rect = bounds(element);
+          if (!rect.width || !rect.height) return;
+          frame.entities.set(keyOf({ side, kind: 'card', uid: element.dataset.cardUid }), {
+            rect, element, slot,
+            cardId: Number(element.querySelector('[data-id]')?.dataset.id),
+          });
         });
-      });
+      }
     }
     return frame;
   }
@@ -57,9 +61,9 @@ export function createBattleEffects({ root }) {
     if (energy && frame.energy.has(entity.side)) return frame.energy.get(entity.side);
     const exact = frame.entities.get(keyOf(entity));
     if (exact) return exact;
-    const slot = frame.slots.get(entity.side)?.[entity.slot];
+    const slot = frame.slots.get(`${entity.side}:${entity.zone || 'board'}`)?.[entity.slot];
     if (slot) return { rect: slot, element: null };
-    return frame.entities.get(keyOf({ side: entity.side, kind: 'hero' })) || null;
+    return null;
   }
 
   function later(callback, delay) {
@@ -118,7 +122,7 @@ export function createBattleEffects({ root }) {
 
   function popup(text, kind, entity, frame, { energy = false, life = 1100 } = {}) {
     if (!anchor(entity, frame, energy)) return;
-    if (kind === 'energy') {
+    if (kind === 'gold') {
       [...items].filter(item => item.kind === kind && keyOf(item.entity) === keyOf(entity)).forEach(remove);
     }
     const node = doc.createElement('div');
@@ -207,14 +211,17 @@ export function createBattleEffects({ root }) {
       charge(step.actor, step.target, beforeFrame);
       speak(step.actor, 'attack', beforeFrame);
       duration = 240;
-    } else if (step.type === 'guard') {
-      popup('🛡\n守護承擋', 'guard', target, beforeFrame, { life: 760 });
+    } else if (step.type === 'guard' || step.type === 'shield') {
+      const blocked = changes.some(change => change.field === 'shield' && change.amount < 0);
+      const guard = popup(`🛡\n${step.type === 'shield' ? blocked ? '護盾抵擋' : '獲得護盾' : '守護承擋'}`, 'guard', target, beforeFrame, { life: 760 });
+      if (guard && step.type === 'shield') guard.node.dataset.shieldState = blocked ? 'blocked' : 'gained';
       outline(target, beforeFrame, 'guard', 200);
       speak(target, 'defend', beforeFrame);
       duration = 200;
-    } else if (step.type === 'summon') {
+    } else if (['summon', 'buy', 'reward', 'triple'].includes(step.type)) {
       outline(target, beforeFrame, 'summon', 200);
       speak(target, 'summon', beforeFrame);
+      if (step.type === 'triple') popup('三合一・金卡！', 'buff', target, beforeFrame);
       duration = 200;
     } else if (step.type === 'death') {
       const element = anchor(target, beforeFrame)?.element;
@@ -240,8 +247,8 @@ export function createBattleEffects({ root }) {
           if (voices++ < 2) speak(change.target, 'hurt', beforeFrame);
         }
         duration = Math.max(duration, 180);
-      } else if (change.field === 'mana') {
-        popup(`${change.amount < 0 ? '−' : '+'}${Math.abs(change.amount)} 能量`, 'energy', change.target, beforeFrame, { energy: true });
+      } else if (change.field === 'gold') {
+        popup(`${change.amount < 0 ? '−' : '+'}${Math.abs(change.amount)} 金幣`, 'gold', change.target, beforeFrame, { energy: true });
         duration = Math.max(duration, 160);
       } else if (step.type === 'buff') {
         popup(`${change.amount > 0 ? '+' : '−'}${Math.abs(change.amount)} ${change.field === 'attack' ? '攻擊' : '生命上限'}`, 'buff', change.target, beforeFrame);

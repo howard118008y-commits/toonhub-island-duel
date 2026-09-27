@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Card &amp; TW ＆ Game：2026-09-27 競品與網站設計評估，設計師、工程師、玩家三視角及改版優先順序。">
+<title>Card &amp; TW ＆ Game｜競品與網站設計評估</title>
+<style>
+:root{color-scheme:light;--paper:#f7f3e9;--surface:#fffdf7;--ink:#173e32;--muted:#596c61;--line:#d8dfd3;--accent:#bd642f;--soft:#eee6d7}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:1.5rem}body{margin:0;background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:16px;line-height:1.85;-webkit-text-size-adjust:100%}a{color:var(--ink);text-decoration-color:#a6b7a7;text-underline-offset:.2em;text-decoration-thickness:1px}a:hover{color:var(--accent)}a:focus-visible,.table-scroll:focus-visible{outline:3px solid var(--accent);outline-offset:4px;border-radius:3px}p{margin:.8rem 0 1.25rem}strong{font-weight:700}code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.87em;background:#e9ede3;padding:.12em .36em;border-radius:4px;overflow-wrap:anywhere}h1,h2,h3{line-height:1.4;letter-spacing:-.025em}h1{font-size:clamp(1.8rem,3.4vw,3.1rem);font-weight:800;max-width:23ch;margin:0 0 1rem}h2{font-size:clamp(1.4rem,2.4vw,1.9rem);margin:0 0 1.25rem;padding-top:.5rem}h3{font-size:1.15rem;margin:2rem 0 1rem}ul,ol{padding-left:1.5rem}li{margin:.45rem 0;padding-left:.15rem}::selection{background:#e7c7a8;color:var(--ink)}
+.skip-link{position:fixed;top:8px;left:8px;z-index:3;padding:.65rem 1rem;background:var(--ink);color:white;transform:translateY(-180%)}.skip-link:focus{transform:translateY(0)}.page-top{max-width:1360px;margin:0 auto;padding:2rem 3rem 0;display:flex;justify-content:space-between;gap:1rem;font-size:.86rem;font-weight:650;letter-spacing:.03em}.page-top span{color:var(--accent)}.layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:3rem;max-width:1360px;margin:0 auto;padding:2.5rem 3rem 4rem}.toc{position:sticky;top:1.5rem;align-self:start;font-size:.85rem;line-height:1.65;padding-top:1rem}.toc h2{font-size:.83rem;letter-spacing:.16em;color:var(--muted);margin-bottom:1rem}.toc ol{list-style:none;margin:0;padding:0;border-left:1px solid var(--line)}.toc li{margin:0;padding:0}.toc a{display:block;text-decoration:none;padding:.6rem 0 .6rem 1rem;border-left:2px solid transparent;margin-left:-1px}.toc a:hover{border-left-color:var(--accent);background:var(--soft)}article{min-width:0}.report-heading{padding:0 0 2rem}.report-heading p{color:var(--muted);font-size:.9rem}.report-section{border-top:1px solid var(--line);padding:2.4rem 0 1.2rem;scroll-margin-top:1.5rem}.report-section:first-of-type{padding-top:1.5rem}.report-section>p:first-of-type strong{font-size:1.04em}.report-section:last-child{padding-bottom:0}
+.table-scroll{max-width:100%;overflow-x:auto;margin:1.4rem 0 1.6rem;border:1px solid var(--line);border-radius:10px;background:var(--surface);-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}table{border-collapse:collapse;width:100%;font-size:.88rem;line-height:1.7}th,td{padding:.85rem 1rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{font-size:.81rem;font-weight:750;letter-spacing:.02em;background:#eaf0e5;white-space:nowrap}tr:last-child td{border-bottom:0}tbody tr:nth-child(even){background:#f4f5ed}td strong{color:#193d2e}td a{overflow-wrap:anywhere}td code{font-size:.9em}td[data-label="優先"]{font-weight:750;color:var(--accent);white-space:nowrap}td[data-label="分數"],td[data-label="評分"]{font-variant-numeric:tabular-nums;white-space:nowrap}
+.score-summary{overflow:visible;border:0;background:none;border-radius:0}.score-summary table{display:block}.score-summary thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.score-summary tbody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.score-summary tbody tr{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:1.4rem 1.5rem;border-top:3px solid var(--ink)}.score-summary tbody tr:last-child{border-top-color:var(--accent);background:#f5ebdc}.score-summary td{display:block;border:0;padding:0;background:none!important;font-size:.87rem}.score-summary td:first-child{font-size:.87rem;font-weight:750;letter-spacing:.06em}.score-summary td:nth-child(2){margin:.15rem 0 .85rem;line-height:1.3}.score-summary td:nth-child(2) strong{font-size:clamp(1.9rem,3.4vw,2.85rem);font-weight:800;letter-spacing:-.045em;color:var(--ink)}.score-summary td:nth-child(3),.score-summary td:nth-child(4){margin-top:.65rem}.score-summary td:nth-child(n+3)::before{content:attr(data-label);display:block;color:var(--muted);font-size:.72rem;font-weight:700;margin-bottom:.1rem}
+footer{max-width:1360px;margin:auto;padding:0 3rem 2.5rem;text-align:right;font-size:.8rem;color:var(--muted)}
+@media(min-width:1500px){.score-summary tbody{grid-template-columns:repeat(4,minmax(0,1fr))}.score-summary tbody tr{padding:1.25rem}.score-summary td:nth-child(2) strong{font-size:2rem}}
+@media(max-width:1000px){.layout{grid-template-columns:1fr;gap:1.5rem;padding:1.5rem 1.5rem 3rem}.page-top{padding:1.5rem 1.5rem 0}.toc{position:static;padding:0}.toc ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.toc h2{margin-bottom:.5rem}.report-heading{padding-top:1rem}.report-section{padding:1.8rem 0 1rem}footer{padding:0 1.5rem 2rem}}
+@media(max-width:600px){body{font-size:15px;line-height:1.85}.layout{padding:1rem 1rem 2.5rem;gap:1.3rem}.page-top{padding:1.1rem 1rem 0;font-size:.74rem}.toc{font-size:.8rem}.toc ol{grid-template-columns:1fr}.toc a{padding:.4rem 0 .4rem .85rem}h1{font-size:1.9rem}h2{font-size:1.4rem}.score-summary tbody{gap:.7rem}.score-summary tbody tr{padding:1rem}.score-summary td:nth-child(2) strong{font-size:1.72rem}.score-summary td{font-size:.8rem}.table-scroll:not(.score-summary) table{min-width:640px}.table-scroll:not(.score-summary)::before{content:"表格可左右滑動";display:block;padding:.5rem .8rem;font-size:.72rem;color:var(--muted);border-bottom:1px solid var(--line);position:sticky;left:0}.table-scroll:not(.score-summary){border-radius:8px}th,td{padding:.7rem .8rem}footer{padding:0 1rem 1.5rem}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@page{size:A4;margin:16mm 14mm 18mm}
+@media print{html{scroll-behavior:auto}body{background:white;color:#173e32;font-size:9.5pt;line-height:1.65}.skip-link,.toc,.page-top,footer{display:none!important}.layout{display:block;max-width:none;padding:0;margin:0}.report-heading{padding:0 0 6mm}.report-heading h1{font-size:24pt;max-width:none;margin:0 0 4mm}.report-heading p{font-size:8.5pt}.report-section{padding:7mm 0 3mm;border-top:1px solid #bfcabd}h2{font-size:16pt;break-after:avoid}h3{font-size:11pt;margin:5mm 0 2mm;break-after:avoid}p,li{orphans:3;widows:3}p{margin:2mm 0 3mm}.table-scroll{overflow:visible;border-radius:0;margin:3mm 0 4mm;border:0}.table-scroll:not(.score-summary)::before{display:none}table{font-size:8pt;line-height:1.55;min-width:0!important;table-layout:auto}thead{display:table-header-group}tr{break-inside:avoid}th,td{padding:2mm 2.5mm;overflow-wrap:anywhere}th{font-size:7.8pt;white-space:normal;background:#eaf0e5!important}tbody tr:nth-child(even){background:#f5f7f1!important}a{color:inherit;text-decoration:none}code{font-size:.85em;padding:0;background:none}.score-summary tbody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3mm}.score-summary tbody tr{padding:4mm;break-inside:avoid}.score-summary td{font-size:8pt}.score-summary td:nth-child(2) strong{font-size:24pt}.score-summary td:nth-child(n+3)::before{font-size:7pt}.report-section:last-child a[href^="https://"]::after{content:" <" attr(href) ">";font-size:7pt;overflow-wrap:anywhere;color:#596c61}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#report-content">跳至報告內容</a>
+<div class="page-top"><span>Card &amp; TW ＆ Game</span><a href="design-review-2026-09-27.md">Markdown 原文</a></div>
+<div class="layout">
+<nav class="toc" aria-label="報告目錄"><h2>目錄</h2><ol><li><a href="#section-1">1. 結論與評分</a></li>
+<li><a href="#section-2">2. 評估方法與邊界</a></li>
+<li><a href="#section-3">3. 競品比較：挑哪個、借什麼</a></li>
+<li><a href="#section-6">4. 三個視角：優點、缺點與給分理由</a></li>
+<li><a href="#section-10">5. 問題證據：哪些確定、哪些待測</a></li>
+<li><a href="#section-11">6. 改版優先順序</a></li>
+<li><a href="#section-12">7. 推薦設計樣式與驗收目標</a></li>
+<li><a href="#section-16">8. 驗證紀錄與來源</a></li></ol></nav>
+<article id="report-content" aria-labelledby="section-0"><section class="report-heading"><h1 id="section-0">Card &amp; TW ＆ Game｜競品與網站設計評估</h1>
+<p>評估日期：2026-09-27｜基準版本：<code>7ebf335</code>｜<a href="https://howard118008y-commits.github.io/toonhub-island-duel/">評估網站</a></p>
+</section><section class="report-section"><h2 id="section-1">1. 結論與評分</h2>
+<p><strong>現站最值得保留的是立體角色與臺灣地域個性；下一輪應優先改善第一次看懂、卡牌看清楚、操作不中斷。</strong> 已有免登入的一鍵對戰，不需要推倒重做或先加入帳號、商城、抽卡系統。</p>
+<div class="table-scroll score-summary" role="region" aria-label="報告表格 1：視角、評分、最大優點、最需要改善" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">視角</th>
+<th align="right" scope="col">評分</th>
+<th scope="col">最大優點</th>
+<th scope="col">最需要改善</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="視角">設計師</td>
+<td align="right" data-label="評分"><strong>68／100</strong></td>
+<td data-label="最大優點">角色與地區辨識鮮明，首頁和牌桌色彩一致</td>
+<td data-label="最需要改善">主次資訊失衡；手機技能字太小</td>
+</tr>
+<tr>
+<td data-label="視角">工程師</td>
+<td align="right" data-label="評分"><strong>60／100</strong></td>
+<td data-label="最大優點">結算與動畫分離，核心規則及建置驗證通過</td>
+<td data-label="最需要改善">圖片負擔、鍵盤焦點、保存承諾與自動驗收</td>
+</tr>
+<tr>
+<td data-label="視角">玩家</td>
+<td align="right" data-label="評分"><strong>72／100</strong></td>
+<td data-label="最大優點">點一次即可開戰；點卡出場、全隊進攻容易操作</td>
+<td data-label="最需要改善">換回合狀態仍需解讀，重新整理會失去對局</td>
+</tr>
+<tr>
+<td data-label="視角">等權整體</td>
+<td align="right" data-label="評分"><strong>約 67／100</strong></td>
+<td data-label="最大優點">可玩的地域卡牌原型</td>
+<td data-label="最需要改善">先補清晰度、效率與操作連續性</td>
+</tr>
+</tbody></table></div>
+<p>計算：三視角各 5 項、每項 1–5 分；分別為 17、15、18／25，乘 4 換算百分制。總計 50／75＝66.67%，四捨五入為 67。這是專家啟發式判斷，<strong>不是玩家滿意度、轉換率、Lighthouse 分數或完整合規認證</strong>。</p>
+<p>本輪交付為研究報告與改版優先順序；下文「建議」均尚未套用至公開網站。</p>
+</section><section class="report-section"><h2 id="section-2">2. 評估方法與邊界</h2>
+<ul>
+<li>現站實際操作：桌機 <strong>1280×720</strong>、手機 <strong>390×844</strong>、較小手機 <strong>375×667</strong>；進入對戰、查看教學與詳情、出牌、AI 回應、返回再開、重新整理，以及鍵盤換回合。</li>
+<li>工程查核：原始碼、圖片檔案量、正式建置、8 組規則驗收、動畫 smoke、主題訊息資料驗證。鏡像與版本的 11 個重點檔案雜湊一致後才使用鏡像測試。</li>
+<li>競品：5 個官方來源產品，區分同類卡牌與相鄰流程參考；實際操作、官方文件、官方示意分開記錄。</li>
+<li>沒有招募真人受測者；未測完整通關、遊戲平衡、轉換率、留存、冷快取 LCP／INP／CLS、完整螢幕閱讀器或 200% 縮放。未用單次操作推論全產品品質。</li>
+</ul>
+<p>評分尺度：1＝主要流程受阻；2＝重要負擔；3＝可用但有明確缺口；4＝該觀察範圍表現良好；5＝該項表現優秀且有足夠證據。2、4 為中間級距；未知不填零分。</p>
+</section><section class="report-section"><h2 id="section-3">3. 競品比較：挑哪個、借什麼</h2>
+<p><strong>流程首選：CardGames.io 的「直接進牌桌」。卡面首選：MARVEL SNAP 的「固定數值位置＋詳情按需顯示」。</strong> 沒有一個完整網站同時在所有面向勝出；採用兩者各自最有用的設計。</p>
+<div class="table-scroll" role="region" aria-label="報告表格 2：候選、類型與可比性、值得借用、不採用／限制" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">候選</th>
+<th scope="col">類型與可比性</th>
+<th scope="col">值得借用</th>
+<th scope="col">不採用／限制</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="候選"><a href="https://cardgames.io/solitaire/">CardGames.io Solitaire</a></td>
+<td data-label="類型與可比性">相鄰流程參考；普通撲克牌，非角色技能構築</td>
+<td data-label="值得借用">頁面已有預設牌局；無登入／安裝；狀態變化就地呈現</td>
+<td data-label="不採用／限制">左右廣告與影片干擾，整頁不算最乾淨；簡單撲克牌不能直接解決長技能排版</td>
+</tr>
+<tr>
+<td data-label="候選"><a href="https://marvelsnap.com/how-to-play/">MARVEL SNAP</a></td>
+<td data-label="類型與可比性">同類角色對戰卡牌；親測官方互動教學</td>
+<td data-label="值得借用">費用、戰力固定角落；點卡查能力；每一步聚焦一個概念</td>
+<td data-label="不採用／限制">未安裝客戶端；不搬霓虹裝飾、商店和下載前置流程</td>
+</tr>
+<tr>
+<td data-label="候選"><a href="https://www.pokemontcgpocket.com/tc/howtoplay/battle/">Pokémon TCG Pocket</a></td>
+<td data-label="類型與可比性">同類角色收藏與對戰；官方繁中示意</td>
+<td data-label="值得借用">英雄／角色生命醒目，場上與備戰分區</td>
+<td data-label="不採用／限制">App 需下載；官方示意卡面仍有密集細字，非本次實玩</td>
+</tr>
+<tr>
+<td data-label="候選"><a href="https://www.megacrit.com/press-kits/slay-the-spire/">Slay the Spire</a></td>
+<td data-label="類型與可比性">同類單人構築卡牌；歷史官方示意</td>
+<td data-label="值得借用">手牌、能量、敵人、結束回合分區；選牌放大看全文</td>
+<td data-label="不採用／限制">圖內日期為 2017-09-28，不能當 2026 客戶端驗收；不搬完整地圖／成長系統</td>
+</tr>
+<tr>
+<td data-label="候選"><a href="https://dominion.games/">Dominion Online</a></td>
+<td data-label="類型與可比性">同類瀏覽器構築卡牌</td>
+<td data-label="值得借用">提醒本作保留訪客試玩：免安裝不代表免帳號</td>
+<td data-label="不採用／限制">官方條款要求註冊及登入；未取得穩定牌桌視覺，不推薦未看過的布局</td>
+</tr>
+</tbody></table></div>
+<h3 id="section-4">一致維度評分</h3>
+<p>O＝本次親自觀察／操作；D＝官方文件；V＝官方示意。入口評對應官網入口，卡面與回饋評實際看見的內容；<strong>不同層不合併成產品總排名</strong>。5 最佳，未知不參與加總。</p>
+<div class="table-scroll" role="region" aria-label="報告表格 3：候選、入口清晰、開始成本低、資訊節制、卡牌可讀性、操作回饋" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">候選</th>
+<th align="right" scope="col">入口清晰</th>
+<th align="right" scope="col">開始成本低</th>
+<th align="right" scope="col">資訊節制</th>
+<th align="right" scope="col">卡牌可讀性</th>
+<th align="right" scope="col">操作回饋</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="候選">CardGames.io</td>
+<td align="right" data-label="入口清晰">4 O</td>
+<td align="right" data-label="開始成本低">5 O</td>
+<td align="right" data-label="資訊節制">2 O</td>
+<td align="right" data-label="卡牌可讀性">5 O</td>
+<td align="right" data-label="操作回饋">4 O</td>
+</tr>
+<tr>
+<td data-label="候選">MARVEL SNAP</td>
+<td align="right" data-label="入口清晰">4 O</td>
+<td align="right" data-label="開始成本低">2 D</td>
+<td align="right" data-label="資訊節制">4 V</td>
+<td align="right" data-label="卡牌可讀性">4 V</td>
+<td align="right" data-label="操作回饋">未知</td>
+</tr>
+<tr>
+<td data-label="候選">Pokémon TCG Pocket</td>
+<td align="right" data-label="入口清晰">未知</td>
+<td align="right" data-label="開始成本低">2 D</td>
+<td align="right" data-label="資訊節制">4 V</td>
+<td align="right" data-label="卡牌可讀性">3 V</td>
+<td align="right" data-label="操作回饋">未知</td>
+</tr>
+<tr>
+<td data-label="候選">Slay the Spire</td>
+<td align="right" data-label="入口清晰">未知</td>
+<td align="right" data-label="開始成本低">2 D</td>
+<td align="right" data-label="資訊節制">4 V</td>
+<td align="right" data-label="卡牌可讀性">4 V</td>
+<td align="right" data-label="操作回饋">未知</td>
+</tr>
+<tr>
+<td data-label="候選">Dominion Online</td>
+<td align="right" data-label="入口清晰">未知</td>
+<td align="right" data-label="開始成本低">3 D</td>
+<td align="right" data-label="資訊節制">未知</td>
+<td align="right" data-label="卡牌可讀性">未知</td>
+<td align="right" data-label="操作回饋">未知</td>
+</tr>
+</tbody></table></div>
+<p>評分依據：CardGames.io 開頁有牌桌但 Cookie 先遮擋，出牌後位置／步數改變且可 Undo；廣告使資訊節制僅 2 分。SNAP 教學入口清楚、數值位置固定，但下載提高開始成本。Pocket 的官方圖有清楚 HP、細字仍密；官網本次視覺未正常呈現，因此入口不評。Slay the Spire 的分區與選牌放大可見，但僅歷史圖。Dominion 的已知門檻是帳號，其他維度證據不足。</p>
+<p>CardGames.io 親測：拒絕 Cookie → 雙擊黑桃 A → 移至基礎牌堆、步數 0→1 → Undo 復位、步數 1→2。SNAP 親測僅官網 Begin／Your Cards 教學，<strong>不視為完成真實對局</strong>。其餘官方資料與限制見第 8 節。</p>
+<h3 id="section-5">對本作的實際選擇</h3>
+<p>保留現有一鍵進入預設牌組的優勢；不增加必填帳號或組牌前置步驟。卡牌繼續採「短效果＋詳情」，但借 SNAP 把數值位置、可讀字級與教學順序做得更一致。首頁角色大圖保留，補清楚遊戲說明；無需換成競品美術。</p>
+</section><section class="report-section"><h2 id="section-6">4. 三個視角：優點、缺點與給分理由</h2>
+<h3 id="section-7">設計師：68／100</h3>
+<div class="table-scroll" role="region" aria-label="報告表格 4：項目、分數、觀察與判斷" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">項目</th>
+<th align="right" scope="col">分數</th>
+<th scope="col">觀察與判斷</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="項目">地域與角色識別</td>
+<td align="right" data-label="分數">5／5</td>
+<td data-label="觀察與判斷">大地名、職業、造型與台詞形成識別，24 位角色有延展性</td>
+</tr>
+<tr>
+<td data-label="項目">資訊層級</td>
+<td align="right" data-label="分數">3／5</td>
+<td data-label="觀察與判斷">首頁大圖強，但「這是什麼遊戲」集中在左上小字；兩個開始入口名稱不一致</td>
+</tr>
+<tr>
+<td data-label="項目">文字可讀性</td>
+<td align="right" data-label="分數">2／5</td>
+<td data-label="觀察與判斷">手機手牌技能 9px；桌機上方開始按鈕文字 11px；詳細資訊可開啟仍不能取代主要資訊易讀</td>
+</tr>
+<tr>
+<td data-label="項目">手機布局</td>
+<td align="right" data-label="分數">3／5</td>
+<td data-label="觀察與判斷">三種尺寸主要操作可用；小手機需壓縮卡面，橫捲手牌提示不足</td>
+</tr>
+<tr>
+<td data-label="項目">風格一致性</td>
+<td align="right" data-label="分數">4／5</td>
+<td data-label="觀察與判斷">首頁與遊戲的暖色、紋樣、卡框有一致性；牌桌視覺權重仍可更集中</td>
+</tr>
+</tbody></table></div>
+<p><strong>優點：</strong> 角色品質是資產；中文地區與職業有內容；遊戲與首頁色彩相連。<strong>缺點：</strong> 美術佔據首屏主要注意力，核心遊戲訊息太小；手機技能閱讀費力；首頁只有前後切換，缺少直接找某地區的入口。這不代表整站沒有卡牌列表，遊戲主選單已有編牌功能。</p>
+<h3 id="section-8">工程師：60／100</h3>
+<div class="table-scroll" role="region" aria-label="報告表格 5：項目、分數、觀察與判斷" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">項目</th>
+<th align="right" scope="col">分數</th>
+<th scope="col">觀察與判斷</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="項目">圖片與載入效率</td>
+<td align="right" data-label="分數">2／5</td>
+<td data-label="觀察與判斷">初始附近 5 張預載 PNG 原檔合計 11.76 MB；尚無用途尺寸變體</td>
+</tr>
+<tr>
+<td data-label="項目">響應式與操作布局</td>
+<td align="right" data-label="分數">4／5</td>
+<td data-label="觀察與判斷">三尺寸確認卡面與主按鈕可見；尚未完整測放大／橫向尺寸</td>
+</tr>
+<tr>
+<td data-label="項目">可及性與鍵盤</td>
+<td align="right" data-label="分數">3／5</td>
+<td data-label="觀察與判斷">有語義按鈕、對話框、播報、減少動態；進攻後焦點落到 BODY</td>
+</tr>
+<tr>
+<td data-label="項目">狀態可靠性與來源安全</td>
+<td align="right" data-label="分數">3／5</td>
+<td data-label="觀察與判斷">核心結算測試通過、訊息來源有驗證；僅記憶體保留對局，重整會遺失</td>
+</tr>
+<tr>
+<td data-label="項目">模組、測試與發布</td>
+<td align="right" data-label="分數">3／5</td>
+<td data-label="觀察與判斷">結算和效果拆分有效；既有測試在 repo 外，CI 只建置，遊戲版本引用需手動同步</td>
+</tr>
+</tbody></table></div>
+<p><strong>優點：</strong> 純引擎與動畫分開；取消舊播放有防護；父子頁訊息同時檢查來源與 origin。<strong>缺點：</strong> 圖片與實際顯示用途不成比例；每次整體更新 DOM 破壞鍵盤焦點；測試未納入發布流程。沒有證據顯示需要為了評分全面重寫框架，也未發現需立即阻斷上線的 P0 問題。</p>
+<h3 id="section-9">玩家：72／100</h3>
+<div class="table-scroll" role="region" aria-label="報告表格 6：項目、分數、觀察與判斷" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">項目</th>
+<th align="right" scope="col">分數</th>
+<th scope="col">觀察與判斷</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="項目">開始成本</td>
+<td align="right" data-label="分數">5／5</td>
+<td data-label="觀察與判斷">首頁一次點擊進入預設對局；免登入、免下載</td>
+</tr>
+<tr>
+<td data-label="項目">規則理解</td>
+<td align="right" data-label="分數">3／5</td>
+<td data-label="觀察與判斷">玩法完整可查；等待、快攻、守護與疲勞集中於四段文字，新手仍需閱讀</td>
+</tr>
+<tr>
+<td data-label="項目">操作步驟</td>
+<td align="right" data-label="分數">4／5</td>
+<td data-label="觀察與判斷">點卡出場＋全隊進攻很直接；無人可攻擊時仍用同一主標，靠副標解釋換回合</td>
+</tr>
+<tr>
+<td data-label="項目">結果與回饋</td>
+<td align="right" data-label="分數">4／5</td>
+<td data-label="觀察與判斷">生命／能量、攻擊／守護／受擊提示、戰鬥紀錄與角色台詞形成回饋；密集交戰的理解仍需真人驗證</td>
+</tr>
+<tr>
+<td data-label="項目">返回與復原</td>
+<td align="right" data-label="分數">2／5</td>
+<td data-label="觀察與判斷">返回首頁再開會保留，但整頁重整失去對局；保存文案範圍過廣</td>
+</tr>
+</tbody></table></div>
+<p><strong>優點：</strong> 不必先懂牌組構築就能開始；資源不足有原因；角色台詞提供地方趣味。<strong>缺點：</strong> 玩家仍可能把「全隊進攻」誤解為每張新牌都能立即攻擊；手牌需橫捲但缺提示；保存行為與字面承諾不同。這是代入玩家的操作觀察，未聲稱真人玩家已感到困惑。</p>
+</section><section class="report-section"><h2 id="section-10">5. 問題證據：哪些確定、哪些待測</h2>
+<div class="table-scroll" role="region" aria-label="報告表格 7：編號、證據、影響與定位" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">編號</th>
+<th scope="col">證據</th>
+<th scope="col">影響與定位</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="編號">E1 圖片成本</td>
+<td data-label="證據">檔案量測：24 張 portrait 共 55,563,390 bytes；初始預載 ID 1、24、2、3、4 共 11,759,385 bytes；皆 1024×1536 RGBA PNG</td>
+<td data-label="影響與定位">約 11.76 MB 是初始預載原檔量，<strong>不是實測傳輸量／LCP，也不是一次下載全部 24 張</strong>。<code>src/App.tsx:53</code>、<code>:73</code>、<code>:146</code></td>
+</tr>
+<tr>
+<td data-label="編號">E2 保存落差</td>
+<td data-label="證據">公開站第 2 回合返回再開仍保留；整頁 reload 再開變第 1 回合且重抽牌</td>
+<td data-label="影響與定位">與「你的對局會保留，隨時回來繼續。」範圍不符。<code>src/App.tsx:175</code>；<code>public/game/src/app.js:11</code>、<code>:179</code></td>
+</tr>
+<tr>
+<td data-label="編號">E3 鍵盤焦點</td>
+<td data-label="證據">用 Enter 進攻，AI 回應完成後焦點為 BODY；再按 Tab 到主選單</td>
+<td data-label="影響與定位">每回合需重新遍歷控制列。<code>public/game/src/app.js:116</code>、<code>:117</code>、<code>:158</code></td>
+</tr>
+<tr>
+<td data-label="編號">E4 字級與目標</td>
+<td data-label="證據">390×844：可見技能 9px、地區 13px、攻血 18px；手牌ⓘ 24×24px、戰場ⓘ 21×21px</td>
+<td data-label="影響與定位">戰場整卡可開同一詳情，存在等效大目標；不以小ⓘ單獨宣稱標準失敗。<code>public/game/src/style.css:303</code>、<code>:310</code></td>
+</tr>
+<tr>
+<td data-label="編號">E5 回合文案</td>
+<td data-label="證據">新出苗栗有「等待下回合」；主按鈕仍為「全隊進攻」，小字才說無人可攻擊、直接換回合</td>
+<td data-label="影響與定位">不是沒有提示，而是重要狀態與主標不一致；屬設計改善，非規則錯誤</td>
+</tr>
+<tr>
+<td data-label="編號">E6 驗收未自動化</td>
+<td data-label="證據">測試在 repo 外的 work；發布只執行建置；TS 範圍未含 public/game JavaScript</td>
+<td data-label="影響與定位">建置成功不足以代表遊戲互動已回歸。<code>package.json:6</code>、<code>tsconfig.json:20</code>、<code>.github/workflows/deploy.yml:42</code></td>
+</tr>
+<tr>
+<td data-label="編號">E7 快取維護風險</td>
+<td data-label="證據">7 個引用手動使用同一版本 query；本次版本一致、未重現舊快取問題</td>
+<td data-label="影響與定位">未來漏改可能混用版本，應由建置統一產生。<code>public/game/index.html:9</code>、<code>:16</code>；<code>public/game/src/app.js:2</code>；<code>src/App.tsx:176</code></td>
+</tr>
+<tr>
+<td data-label="編號">E8 備援圖片待驗</td>
+<td data-label="證據">遊戲以 regions 背景作載入占位，再隱藏；首頁則失敗才用備援</td>
+<td data-label="影響與定位">可能同時載入 sheet 與 portrait，需網路請求實測；<strong>不能先把備援約 10 MB 加進每局流量</strong>。<code>public/game/src/app.js:46</code>；<code>public/game/src/style.css:129</code></td>
+</tr>
+</tbody></table></div>
+<p>工程正向證據：<code>public/game/src/theme.js:36</code>、<code>:45</code> 與 <code>src/App.tsx:84</code> 檢查 origin／來源及主題資料；<code>public/game/src/effects.js:18</code> 的效果層不搶焦點。這是限定範圍查核，非完整滲透測試。</p>
+</section><section class="report-section"><h2 id="section-11">6. 改版優先順序</h2>
+<p>P1＝應先做的重要體驗／承諾修正；P2＝下一輪操作與維護改善；P3＝後續優化。工作量為相對比較，不是工時報價。</p>
+<div class="table-scroll" role="region" aria-label="報告表格 8：順序、優先、改什麼、工作量、驗收條件" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">順序</th>
+<th scope="col">優先</th>
+<th scope="col">改什麼</th>
+<th scope="col">工作量</th>
+<th scope="col">驗收條件</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="順序">1</td>
+<td data-label="優先">P1</td>
+<td data-label="改什麼">保存提示先寫清楚「本頁未重新整理時可繼續」</td>
+<td data-label="工作量">小</td>
+<td data-label="驗收條件">返回再開、重整的實際結果均與文案一致</td>
+</tr>
+<tr>
+<td data-label="順序">2</td>
+<td data-label="優先">P1</td>
+<td data-label="改什麼">高畫質原稿保留，產出主角／卡牌用透明壓縮圖與尺寸變體，減少非必要預載</td>
+<td data-label="工作量">中</td>
+<td data-label="驗收條件">臉、髮絲、透明邊緣視覺對照通過；量測冷載入實際流量與等待時間</td>
+</tr>
+<tr>
+<td data-label="順序">3</td>
+<td data-label="優先">P1</td>
+<td data-label="改什麼">放大可見技能字；無可攻擊角色時主標用「結束回合」，否則「全隊進攻」</td>
+<td data-label="工作量">中</td>
+<td data-label="驗收條件">390×844、375×667均可讀，四種狀態的主操作文案一致</td>
+</tr>
+<tr>
+<td data-label="順序">4</td>
+<td data-label="優先">P2</td>
+<td data-label="改什麼">動畫與重繪後恢復合理鍵盤焦點</td>
+<td data-label="工作量">中</td>
+<td data-label="驗收條件">僅用鍵盤可連續三回合；已出牌消失時轉移至合理可用控制</td>
+</tr>
+<tr>
+<td data-label="順序">5</td>
+<td data-label="優先">P2</td>
+<td data-label="改什麼">一次只教一個概念；首頁補一句遊戲介紹，兩個開始入口統一名稱</td>
+<td data-label="工作量">小至中</td>
+<td data-label="驗收條件">新玩家能說出目標、出牌成本與新牌等待原因；不必先讀完整長文</td>
+</tr>
+<tr>
+<td data-label="順序">6</td>
+<td data-label="優先">P2</td>
+<td data-label="改什麼">手牌加左右滑動提示；讓卡牌詳情容易點</td>
+<td data-label="工作量">小</td>
+<td data-label="驗收條件">首張、末張與詳情在手機皆能找到，點擊區不互相重疊</td>
+</tr>
+<tr>
+<td data-label="順序">7</td>
+<td data-label="優先">P2</td>
+<td data-label="改什麼">把既有規則／動畫測試納入 repo 與 CI，建置自動產生資產版本</td>
+<td data-label="工作量">中</td>
+<td data-label="驗收條件">發布前自動跑既有驗收，不靠手改 7 處版本；檢查含遊戲 JS</td>
+</tr>
+<tr>
+<td data-label="順序">8</td>
+<td data-label="優先">P3</td>
+<td data-label="改什麼">提供首頁地區索引，讓想找家鄉的人可直接跳選</td>
+<td data-label="工作量">中</td>
+<td data-label="驗收條件">可直接找到指定地區；復用既有 24 角資料，避免另維護名單</td>
+</tr>
+</tbody></table></div>
+<p>真正的重整續玩可作下一階段能力；若採用，需存檔版本、合法性驗證、重開清除及動畫中刷新策略。先修正文案即可消除現有誤導，不必為此立刻加入雲端帳號。</p>
+</section><section class="report-section"><h2 id="section-12">7. 推薦設計樣式與驗收目標</h2>
+<h3 id="section-13">首頁：保留主視覺，補上遊戲目的</h3>
+<ul>
+<li>品牌維持 <strong>Card &amp; TW ＆ Game</strong>，24 位立體人物、地區名、職業與台詞保留。</li>
+<li>主文案建議：「24位地方英雄，點卡出場、全隊進攻，挑戰電腦對手。」</li>
+<li>主要入口統一「立即開戰」；次要入口「認識24位角色」；輔助訊息「免下載・免登入・繁體中文」。不承諾未量測的完成時間。</li>
+</ul>
+<h3 id="section-14">對戰：先看得懂一張牌，再做一個動作</h3>
+<p>牌面第一層：地區名、能量、攻擊、生命、一行短技能。第二層：完整職業、台詞、效果與例外。維持既有傷害紅字／回血綠字及正負號；狀態同時用文字與圖示表達，不只依賴色彩。保留攻擊、守護、受擊與 96 句角色台詞；減少動態時仍提供數值回饋。</p>
+<div class="table-scroll" role="region" aria-label="報告表格 9：狀態、建議主要按鈕、輔助提示" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">狀態</th>
+<th scope="col">建議主要按鈕</th>
+<th scope="col">輔助提示</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="狀態">沒有角色可攻擊</td>
+<td data-label="建議主要按鈕">結束回合</td>
+<td data-label="輔助提示">交給對手行動；等待中的角色下回合可進攻</td>
+</tr>
+<tr>
+<td data-label="狀態">有角色可攻擊</td>
+<td data-label="建議主要按鈕">全隊進攻</td>
+<td data-label="輔助提示">顯示可進攻數量</td>
+</tr>
+<tr>
+<td data-label="狀態">播放中</td>
+<td data-label="建議主要按鈕">行動中…</td>
+<td data-label="輔助提示">顯示我方進攻／對手回應，暫停重複操作</td>
+</tr>
+<tr>
+<td data-label="狀態">勝負結束</td>
+<td data-label="建議主要按鈕">再玩一局</td>
+<td data-label="輔助提示">清楚顯示結果與回主選單入口</td>
+</tr>
+</tbody></table></div>
+<h3 id="section-15">下一輪驗收</h3>
+<ol>
+<li><strong>圖片：</strong> 原稿與壓縮版本在同尺寸對照；相同裝置與限速各跑 5 次冷載入，報告中位數與實際傳輸量。初始角色圖片總量可先以 <strong>≤1.5 MB</strong> 作優化目標，需實作後驗證，現站尚未達成此驗收。</li>
+<li><strong>可讀與可點：</strong> 小手機一行技能以 <strong>12px 以上</strong>為設計目標；主要觸控區目標 <strong>44×44px</strong>，不得互相遮擋。這些是本案目標，不是單憑尺寸判定標準合規。</li>
+<li><strong>狀態與保存：</strong> 測上述四種按鈕狀態，以及返回首頁、reload、關閉再開；如加存檔，另測損壞、過期與動畫中刷新。</li>
+<li><strong>鍵盤：</strong> Tab／Enter 可連續三回合、開關詳情及返回；播放後焦點不能回到 BODY。</li>
+<li><strong>真人試玩：</strong> 邀請 5 位未玩過本作的人，無口頭教學完成出牌、換回合、查技能，記錄卡住步驟。這是建議的下一輪研究，本次尚未執行。</li>
+</ol>
+</section><section class="report-section"><h2 id="section-16">8. 驗證紀錄與來源</h2>
+<h3 id="section-17">本次現站驗證</h3>
+<div class="table-scroll" role="region" aria-label="報告表格 10：項目、結果" tabindex="0"><table>
+<thead>
+<tr>
+<th scope="col">項目</th>
+<th scope="col">結果</th>
+</tr>
+</thead>
+<tbody><tr>
+<td data-label="項目">正式建置</td>
+<td data-label="結果">PASS，4.15 秒；首頁 bundle <code>index-BTE4WHym.js</code></td>
+</tr>
+<tr>
+<td data-label="項目">遊戲模組語法</td>
+<td data-label="結果">app／engine／effects／theme／voices，5／5 PASS</td>
+</tr>
+<tr>
+<td data-label="項目">結算與快照驗收</td>
+<td data-label="結果">8／8 PASS：守護、等待／快攻、互傷、AOE、群療、過量扣血、勝負、深拷貝</td>
+</tr>
+<tr>
+<td data-label="項目">動畫 smoke 與定位</td>
+<td data-label="結果">PASS；mock DOM 驗證，不冒稱真機動態錄影</td>
+</tr>
+<tr>
+<td data-label="項目">主題資料驗證</td>
+<td data-label="結果">1 個合法、6 個非法案例 PASS；來源檢查另經程式審查</td>
+</tr>
+<tr>
+<td data-label="項目">三尺寸實際畫面</td>
+<td data-label="結果">1280×720、390×844、375×667；主要手牌高度與操作可見，文字大小另列改善</td>
+</tr>
+<tr>
+<td data-label="項目">公開站流程</td>
+<td data-label="結果">開戰、詳情、出牌、AI回應正常；確認保存落差及鍵盤焦點問題</td>
+</tr>
+<tr>
+<td data-label="項目">操作期間錯誤紀錄</td>
+<td data-label="結果">本次擷取 error／warn 為空；僅限已走過流程，不代表所有分支無錯</td>
+</tr>
+</tbody></table></div>
+<h3 id="section-18">競品官方來源（查閱：2026-09-27）</h3>
+<ul>
+<li>CardGames.io：<a href="https://cardgames.io/solitaire/">實際可玩牌桌與規則</a>。本次只測一次出牌與 Undo，未完成整局、手機或持久化驗收。</li>
+<li>MARVEL SNAP：<a href="https://marvelsnap.com/">官方介紹與下載</a>、<a href="https://marvelsnap.com/how-to-play/">官網互動教學</a>。客戶端未實玩；官方時間宣傳不當成本案測得的對局時間。</li>
+<li>Pokémon TCG Pocket：<a href="https://www.pokemontcgpocket.com/tc/howtoplay/battle/">繁中對戰流程</a>、<a href="https://www.pokemontcgpocket.com/assets/img/tc/howtoplay/img12.png">官方示意圖</a>、<a href="https://support.pokemon.com/hc/en-us/articles/30330309361172-Pok%C3%A9mon-TCG-Pocket-Gameplay-FAQ">官方支援 FAQ</a>。示意標示為開發中畫面；不採用互相不同的最低裝置規格。</li>
+<li>Slay the Spire：<a href="https://www.megacrit.com/press-kits/slay-the-spire/">官方 press kit</a>、<a href="https://www.megacrit.com/images/ss8.jpg">歷史戰鬥示意</a>、<a href="https://www.megacrit.com/faq/">官方平台 FAQ</a>。歷史圖內日期為 2017-09-28，不代表當前版本全貌。</li>
+<li>Dominion Online：<a href="https://dominion.games/">官方入口</a>、<a href="https://dominion.games/terms-of-service.html">官方條款的註冊登入要求</a>。未註冊或操作牌桌，未知欄位保留。</li>
+</ul>
+<p>本報告的圖片數字來自檔案量測，操作證據來自上述公開站流程；建議與尚未量測的效能明確分開。後續修改應先處理 P1，再用同一套方法重評，避免只換外觀而沒有改善第一次遊玩。</p>
+</section></article>
+</div>
+<footer><a href="#section-0">回到報告開頭 ↑</a></footer>
+</body>
+</html>

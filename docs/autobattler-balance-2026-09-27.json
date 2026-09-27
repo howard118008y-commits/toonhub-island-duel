@@ -1,0 +1,350 @@
+{
+  "seedRange": [
+    1,
+    1000
+  ],
+  "elapsedSeconds": 33.71,
+  "config": {
+    "version": 1,
+    "rounds": 10,
+    "heroHealth": 24,
+    "boardSize": 5,
+    "benchSize": 3,
+    "buyCost": 3,
+    "sellValue": 1,
+    "refreshCost": 1,
+    "maxGold": 10,
+    "shopSizes": [
+      3,
+      4,
+      4,
+      5
+    ],
+    "upgradeCosts": [
+      5,
+      7,
+      9
+    ],
+    "minUpgradeCost": 1,
+    "damageCap": 8,
+    "maxAttacks": 200,
+    "maxLog": 50,
+    "shopWeights": [
+      [
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0.5,
+        0.5,
+        0,
+        0
+      ],
+      [
+        0.2,
+        0.4,
+        0.4,
+        0
+      ],
+      [
+        0.1,
+        0.2,
+        0.35,
+        0.35
+      ]
+    ],
+    "traitValues": {
+      "city": [
+        1,
+        4
+      ],
+      "forge": [
+        2,
+        5
+      ],
+      "forest": [
+        3,
+        7
+      ],
+      "folk": [
+        1,
+        2
+      ],
+      "transit": [
+        4,
+        8
+      ],
+      "tide": [
+        1,
+        2
+      ]
+    },
+    "abilityValues": {
+      "buffAll": 2,
+      "guide": 2,
+      "selfHeal": 2,
+      "firstStrike": 2,
+      "weakestPing": 1,
+      "deathBuff": 3,
+      "deathBlast": 2,
+      "adjacentAttack": 2,
+      "healWeakest": 2,
+      "healAll": 2,
+      "startBlast": 1,
+      "splash": 2,
+      "attackGrowth": 2,
+      "adjacentHealth": 2,
+      "deathWave": 1,
+      "deathThrow": 3,
+      "adjacentShield": 2
+    },
+    "enemyTiers": [
+      [
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        2
+      ],
+      [
+        1,
+        2,
+        2
+      ],
+      [
+        1,
+        2,
+        2,
+        3
+      ],
+      [
+        2,
+        2,
+        2,
+        3
+      ],
+      [
+        2,
+        2,
+        3,
+        3,
+        3
+      ],
+      [
+        2,
+        3,
+        3,
+        3,
+        4
+      ],
+      [
+        3,
+        3,
+        3,
+        4,
+        4
+      ],
+      [
+        3,
+        3,
+        4,
+        4,
+        4
+      ]
+    ],
+    "enemyBonuses": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      2
+    ]
+  },
+  "method": "Same seeded shops/opponents; all policies upgrade at rounds 2/4/7 when affordable. Six faction policies and a neutral heuristic select combinations/duplicates/skills and order guards/support. Blind buys first offer, uses raw attack/health to field five, same upgrade schedule. These are programmed policies, not human win rates.",
+  "results": [
+    {
+      "strategy": "都會",
+      "seeds": 1000,
+      "wins": 814,
+      "deathsByRound": {
+        "6": 2,
+        "7": 39,
+        "8": 50,
+        "9": 22,
+        "10": 12
+      },
+      "finalBossLosses": 14,
+      "finalBossDraws": 47,
+      "stalemates": 0,
+      "nonTerminations": 0,
+      "invalidStates": 0,
+      "combatCount": 9753,
+      "meanDeathRound": 8.024,
+      "winRate": 0.814,
+      "meanFinalRound": 9.753
+    },
+    {
+      "strategy": "工坊",
+      "seeds": 1000,
+      "wins": 793,
+      "deathsByRound": {
+        "6": 2,
+        "7": 23,
+        "8": 33,
+        "9": 32,
+        "10": 31
+      },
+      "finalBossLosses": 23,
+      "finalBossDraws": 63,
+      "stalemates": 0,
+      "nonTerminations": 0,
+      "invalidStates": 0,
+      "combatCount": 9825,
+      "meanDeathRound": 8.554,
+      "winRate": 0.793,
+      "meanFinalRound": 9.825
+    },
+    {
+      "strategy": "山林",
+      "seeds": 1000,
+      "wins": 801,
+      "deathsByRound": {
+        "5": 4,
+        "6": 3,
+        "7": 34,
+        "8": 34,
+        "9": 29,
+        "10": 25
+      },
+      "finalBossLosses": 22,
+      "finalBossDraws": 48,
+      "stalemates": 0,
+      "nonTerminations": 0,
+      "invalidStates": 0,
+      "combatCount": 9769,
+      "meanDeathRound": 8.209,
+      "winRate": 0.801,
+      "meanFinalRound": 9.769
+    },
+    {
+      "strategy": "人情",
+      "seeds": 1000,
+      "wins": 839,
+      "deathsByRound": {
+        "6": 3,
+        "7": 17,
+        "8": 38,
+        "9": 18,
+        "10": 15
+      },
+      "finalBossLosses": 19,
+      "finalBossDraws": 51,
+      "stalemates": 0,
+      "nonTerminations": 0,
+      "invalidStates": 0,
+      "combatCount": 9843,
+      "meanDeathRound": 8.275,
+      "winRate": 0.839,
+      "meanFinalRound": 9.843
+    },
+    {
+      "strategy": "疾行",
+      "seeds": 1000,
+      "wins": 709,
+      "deathsByRound": {
+        "5": 1,
+        "6": 4,
+        "7": 44,
+        "8": 85,
+        "9": 36,
+        "10": 31
+      },
+      "finalBossLosses": 35,
+      "finalBossDraws": 55,
+      "stalemates": 0,
+      "nonTerminations": 0,
+      "invalidStates": 0,
+      "combatCount": 9641,
+      "meanDeathRound": 8.214,
+      "winRate": 0.709,
+      "meanFinalRound": 9.641
+    },
+    {
+      "strategy": "海風",
+      "seeds": 1000,
+      "wins": 814,
+      "deathsByRound": {
+        "5": 4,
+        "6": 4,
+        "7": 27,
+        "8": 39,
+        "9": 19,
+        "10": 19
+      },
+      "finalBossLosses": 23,
+      "finalBossDraws": 51,
+      "stalemates": 0,
+      "nonTerminations": 0,
+      "invalidStates": 0,
+      "combatCount": 9786,
+      "meanDeathRound": 8.089,
+      "winRate": 0.814,
+      "meanFinalRound": 9.786
+    },
+    {
+      "strategy": "綜合合理選牌",
+      "seeds": 1000,
+      "wins": 869,
+      "deathsByRound": {
+        "6": 2,
+        "7": 17,
+        "8": 26,
+        "9": 22,
+        "10": 7
+      },
+      "finalBossLosses": 16,
+      "finalBossDraws": 41,
+      "stalemates": 0,
+      "nonTerminations": 0,
+      "invalidStates": 0,
+      "combatCount": 9867,
+      "meanDeathRound": 8.203,
+      "winRate": 0.869,
+      "meanFinalRound": 9.867
+    },
+    {
+      "strategy": "盲買基準",
+      "seeds": 1000,
+      "wins": 161,
+      "deathsByRound": {
+        "5": 18,
+        "6": 46,
+        "7": 228,
+        "8": 160,
+        "9": 126,
+        "10": 119
+      },
+      "finalBossLosses": 73,
+      "finalBossDraws": 69,
+      "stalemates": 0,
+      "nonTerminations": 0,
+      "invalidStates": 0,
+      "combatCount": 8596,
+      "meanDeathRound": 7.986,
+      "winRate": 0.161,
+      "meanFinalRound": 8.596
+    }
+  ]
+}

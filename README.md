@@ -1,8 +1,16 @@
-# Card & TW ＆ Game｜臺灣地域卡牌對戰
+# Card & TW ＆ Game｜臺灣地域自走棋
 
-從24位臺灣地域角色中選12張組牌，點卡出場、一鍵全隊進攻，挑戰電腦對手。首頁展示角色的地區、職業與台詞，並與遊戲同步角色圖像、配色與背景圖案；支援桌面及手機，返回首頁後可繼續原有對局。
+招募 24 位臺灣地域角色，搭配羈絆與站位，挑戰 10 輪單機自動對戰。首頁與遊戲共用立體人物、四組地域配色及圖案；支援桌面、手機與瀏覽器本機存檔，不需帳號或遊戲伺服器。
 
 [網站](https://howard118008y-commits.github.io/toonhub-island-duel/) · [GitHub 專案](https://github.com/howard118008y-commits/toonhub-island-duel)
+
+## 設計與驗收紀錄
+
+改版前設計評估（2026-09-27，舊卡牌對戰版本）：[Markdown 原文](docs/design-review-2026-09-27.md) · [HTML 閱讀版](docs/design-review-2026-09-27.html)。原報告與分數保留作改版前紀錄；HTML 可離線開啟，支援手機閱讀與 A4 列印。
+
+自走棋設計、來源與簡化原則：[規則設計文件](docs/autobattler-design-2026-09-27.md)。8,000 次固定種子闖關結果：[平衡報告](docs/autobattler-balance-2026-09-27.md) · [原始 JSON](docs/autobattler-balance-2026-09-27.json)。
+
+本次自走棋驗收：[實際通關、存檔恢復與待驗項目](docs/autobattler-acceptance-2026-09-27.md)。
 
 ## 啟動
 
@@ -18,11 +26,13 @@ npm run dev
 ## 建置與預覽
 
 ```sh
+npm test
+npm run test:balance
 npm run build
 npm run preview
 ```
 
-正式網站輸出至 `dist/`；`public/game/` 與 `public/characters/` 會一併複製為 `dist/game/` 與 `dist/characters/`，包含遊戲頁面、樣式、卡牌資料、規則引擎與人物素材。遊戲本身是靜態 JavaScript，無須另啟遊戲伺服器。
+正式網站輸出至 `dist/`；`public/game/` 會依全部遊戲檔案內容的雜湊輸出至 `dist/game-<hash>/`，`public/characters/` 則複製至 `dist/characters/`。Vite 自動定義 `VITE_GAME_ENTRY`，首頁直接載入版本入口，遊戲內相對 JS／CSS 模組共用目錄版本，不必逐檔維護 `?v=`。`dist/game/index.html` 保留為相容入口，將舊書籤導向目前版本，並提供繁體中文備援連結。版本目錄包含遊戲頁面、樣式、卡牌資料與規則引擎，人物素材維持獨立路徑。遊戲本身是靜態 JavaScript，無須另啟遊戲伺服器。
 
 GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `base: './'`，首頁資產與 iframe 的相對路徑可保留部署子路徑，變更儲存庫名稱時無須修改。若改用絕對 `base`，則須與部署網址一致，並確認首頁及 `game/` 都能載入。
 
@@ -33,21 +43,30 @@ GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `ba
 3. 在 **Actions → Deploy to GitHub Pages** 確認執行成功；如初次推送時尚未設定 Pages，可按 **Run workflow** 重新執行。
 4. 開啟工作流程顯示的網站網址，確認輪播與卡牌遊戲均正常。
 
-後續推送至 `main` 會自動部署，也可手動執行。工作流程使用 Node.js 22，依序執行 `npm ci`、`npm run build`，僅上傳 `dist/`。部署使用官方 GitHub Actions 與 `github-pages` 環境，不需自行設定個人存取權杖。
+後續推送至 `main` 會自動部署，也可手動執行。工作流程使用 Node.js 22，依序執行 `npm ci`、`npm test`、`npm run build`，僅上傳 `dist/`。部署使用官方 GitHub Actions 與 `github-pages` 環境，不需自行設定個人存取權杖。
 
 部署流程參考 [GitHub Pages 官方工作流程文件](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。
 
-## 卡牌玩法
+## 單機自走棋玩法
 
-24 位台灣地域角色可組成 12 張不重複牌組；預設牌組包含天母、信義、中和、永和。雙方英雄有 24 點生命，起手 5 張、起始能量 3；手牌最多 8 張，場上最多 4 位角色。
+- 每場 24 點生命、10 輪；第 10 輪勝出且存活即可通關。
+- 隊伍最多 5 位，備位最多 3 位。商店有 4 個等級、24 種角色、6 組羈絆；同羈絆上陣 2／4 種不同角色會啟動加成。
+- 招募花 3 金幣、出售得 1 金幣、刷新花 1 金幣；免費凍結可以保留商店到下一輪。每輪金幣重新補足，不累積利息。
+- 3 張相同普通角色自動合成金色角色，並獲得下一階角色的免費三選一獎勵。
+- 招募後安排站位，按下開戰即可自動交戰。戰鬥中的受傷與增益不會帶到下一輪；動畫可以加速或略過，結果保持一致。
+- 瀏覽器允許本機儲存時，每次操作會保存進度；重新整理可恢復。儲存被封鎖時仍可玩，但關閉頁面後無法保留。
 
-點手牌支付能量，角色出場並自動施放技能；再按「全隊進攻」，準備好的角色會依序選擇合法目標，優先攻擊守護，接著由電腦對手回應。新角色等待下回合，快攻角色可立即進攻；沒有可進攻角色時仍可按按鈕換回合。攻擊、互傷、治療與退場依序播放，生命與能量變化顯示實際數值，24 位角色有各自的登場、進攻、受擊與守護台詞。牌庫用盡會累加疲勞傷害，直到分出勝負。
+借鏡《爐石戰記：英雄戰場》的招募與自動戰鬥循環，採用原創人物、技能、介面與單機關卡設計；未使用 Blizzard 的美術或程式碼。官方與論壇資料來源及差異見規則設計文件。
+
+## 驗證
+
+`npm test` 驗證規則、無效操作、合成、戰鬥與存檔。`npm run test:balance` 以固定種子比較多種招募策略；模擬用來找明顯失衡，不代表真人勝率。
 
 ## 地域角色與本地素材
 
 本版採用 24 張獨立的 1024 × 1536 透明 PNG 立體潮玩人物，存放於 `public/characters/portrait-01.png` 至 `portrait-24.png`，依卡牌編號對應地域角色。地區、職業與台詞保留原稿，由頁面以繁體中文呈現，沒有將文字渲染進人物圖像。
 
-首頁與遊戲共用這組直式人物素材，等比例顯示；卡牌詳情呈現完整人物，小型戰場與手牌可裁切少量下緣。舊 `regions-01.png` 至 `regions-04.png` 圖集僅作獨立圖片尚未載入時的備援；`public/game/assets/character-atlas.png` 保留供編號 101「掌中戲偶」使用。
+網站優先載入 `public/characters/web/` 的 WebP：首頁保留 1024 × 1536，卡片使用 320 × 480；原始 PNG 完整保留。首頁與遊戲共用這組直式人物素材，等比例顯示；卡牌詳情呈現完整人物，小型戰場可裁切少量下緣。舊 `regions-01.png` 至 `regions-04.png` 圖集僅作獨立圖片尚未載入時的備援；`public/game/assets/character-atlas.png` 保留供編號 101「掌中戲偶」使用。
 
 美術方向與每位角色的最終生成提示詞見 [立體潮玩角色美術紀錄](art-direction-v2.md)。
 
