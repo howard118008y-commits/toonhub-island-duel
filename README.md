@@ -77,6 +77,7 @@ GitHub Pages 專案網址包含 `/toonhub-island-duel/`。目前 Vite 使用 `ba
 
 首頁提供直接可讀的繁體中文介紹，另有三個靜態內容頁；canonical、Open Graph、WebSite／WebPage／VideoGame 結構化資料、品牌圖示、多尺寸 PNG、分享卡、sitemap 與輔助 llms.txt 一併部署。遊戲 iframe 與相容導向入口標示 noindex，避免重複內容。
 
+- [搜尋收錄與上線驗收](docs/seo-launch-2026-09-27.md)
 - [SEO／AEO／GEO 實作說明](docs/seo-implementation-2026-09-27.md)
 - `npm run check:seo`：檢查正式產物的四個可索引頁、結構化資料、靜態連結、品牌圖片與遊戲 noindex。
 - `node scripts/submit-indexnow.mjs`：僅列出通知內容；`npm run notify:indexnow` 才送出。公開 key 只是網址擁有權證明，不是存取憑證。
