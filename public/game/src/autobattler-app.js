@@ -1,5 +1,5 @@
 import { CONFIG, TRAITS, getCharacter } from './roster.js';
-import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUnit, chooseTripleReward, startCombat, nextRound, getSynergies } from './autobattler.js';
+import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUnit, chooseTripleReward, startCombat, nextRound, getSynergies, canReceiveUnit } from './autobattler.js';
 import { loadRun, saveRun, clearRun } from './storage.js';
 import { createBattleEffects } from './effects.js';
 import { installThemeBridge } from './theme.js';
@@ -14,15 +14,16 @@ let shown = structuredClone(run);
 let busy = false;
 let playbackId = 0;
 let selectedUid = null;
-let mobileView = 'shop';
 let previewOpen = false;
 let renderedPhase = '';
 let returnFocus = '';
+let draggedUid = null;
 let saveMessage = loaded.status === 'restored' ? '已接續本機冒險' : loaded.status === 'empty' ? '進度儲存在此瀏覽器' : loaded.message;
 let saveFailed = ['invalid', 'unavailable'].includes(loaded.status);
 let message = loaded.status === 'restored' ? `已接續第 ${run.round} 輪，歡迎回來。` : loaded.status === 'empty' ? '先招募一位角色，再編排你的主場。' : loaded.message;
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const merchantUrl = new URL('../../characters/merchant.webp', import.meta.url).href;
 const imageUrl = (id, detail = false) => new URL(`../../characters/web/${detail ? 'hero' : 'card'}-${String(id === 101 ? 13 : id).padStart(2, '0')}.webp`, import.meta.url).href;
 const traitFor = card => TRAITS.find(trait => trait.id === card.faction);
 const unitList = state => [...state.player.board, ...state.player.bench];
@@ -49,24 +50,24 @@ function restoreFocus(key) {
 function cardView(card, { unit, offer, zone = 'board', compact = false, reward = false } = {}) {
   const trait = traitFor(card);
   const ownCount = unitList(shown).filter(item => item.cardId === card.id && !item.golden).length;
-  const full = shown.player.board.length >= CONFIG.boardSize && shown.player.bench.length >= CONFIG.benchSize;
-  const canBuy = !busy && !shown.pendingReward && shown.player.gold >= CONFIG.buyCost && (!full || ownCount >= 2);
+  const full = shown.player.bench.length >= CONFIG.benchSize;
+  const canBuy = !busy && !shown.pendingReward && shown.player.gold >= CONFIG.buyCost && canReceiveUnit(shown, card.id);
   const selectedCard = unit && String(unit.uid) === String(selectedUid);
   const hp = Math.max(0, unit?.hp ?? card.health);
   const attack = unit?.attack ?? card.attack;
-  const selectable = unit && !compact && shown.phase === 'recruit';
+  const selectable = unit && shown.phase === 'recruit' && zone !== 'combat';
   const action = selectable ? 'select' : 'inspect';
   const actionLabel = selectable ? '選取並編排' : '查看詳情';
   const skill = skillText(card, unit);
-  return `<article class="unit-card ${compact ? 'card-board combat-card' : offer ? 'shop-card' : `card-${zone}`} ${unit?.golden ? 'is-golden' : ''} ${selectedCard ? 'is-selected' : ''}" ${unit ? `data-card-uid="${esc(unit.uid)}"` : ''}>
-    <button class="card-face" type="button" data-action="${action}" data-id="${card.id}" ${unit ? `data-uid="${esc(unit.uid)}"` : ''} data-focus="${unit ? `unit-${esc(unit.uid)}` : `inspect-${esc(offer?.uid || card.id)}`}" ${disabled(selectable && (busy || shown.pendingReward))} ${selectable ? `aria-pressed="${Boolean(selectedCard)}"` : ''} aria-label="${esc(`${card.region}，${actionLabel}，${attack}攻擊、${hp}生命。${unit?.golden ? '金卡。' : ''}${skill}`)}">
+  return `<article class="unit-card ${zone === 'combat' ? 'card-board combat-card' : offer ? 'shop-card' : `card-${zone}`} ${compact && zone !== 'combat' ? 'piece-card' : ''} ${unit?.golden ? 'is-golden' : ''} ${selectedCard ? 'is-selected' : ''}" ${unit ? `data-card-uid="${esc(unit.uid)}"` : ''} ${selectable ? `draggable="true" data-drag-uid="${esc(unit.uid)}"` : ''}>
+    <button class="card-face" type="button" data-action="${action}" data-id="${card.id}" ${unit ? `data-uid="${esc(unit.uid)}"` : ''} data-focus="${unit ? `unit-${esc(unit.uid)}` : `inspect-${esc(offer?.uid || card.id)}`}" ${disabled(selectable && busy)} ${selectable ? `aria-pressed="${Boolean(selectedCard)}"` : ''} aria-label="${esc(`${card.region}，${actionLabel}，${attack}攻擊、${hp}生命。${unit?.golden ? '金卡。' : ''}${skill}`)}">
       <span class="card-heading"><strong>${esc(card.id === 101 ? '戲偶' : card.region)}</strong><span class="tier-mark">${unit?.golden ? '金卡' : `${card.tier}階`}</span></span>
       <span class="portrait"><img src="${imageUrl(card.id)}" width="320" height="480" alt="" loading="lazy" decoding="async" data-art-id="${card.id}"></span>
       ${!compact ? `<span class="card-trait">${esc(trait?.name || '召喚物')}${ownCount && offer ? `<span>已擁有 ${ownCount}/3</span>` : ''}</span><span class="card-skill">${esc(skill)}</span>` : `<span class="combat-badges">${unit?.shield ? `${icon('shield')}護盾` : card.keywords.includes('guard') ? '守護' : unit?.golden ? '金卡' : ''}</span>`}
       <span class="card-stats"><span class="attack-stat">${icon('sword')}<b>${attack}</b></span><span class="health-stat ${hp < (unit?.maxHp ?? card.health) ? 'is-hurt' : ''}">${icon('heart')}<b>${hp}</b></span></span>
     </button>
-    ${offer ? `<button class="buy-button" type="button" data-action="buy" data-uid="${esc(offer.uid)}" data-focus="buy-${esc(offer.uid)}" ${disabled(!canBuy)} aria-label="購買${esc(card.region)}，${CONFIG.buyCost}金幣">${icon('coin')}${full && ownCount < 2 ? '席位已滿' : shown.player.gold < CONFIG.buyCost ? `還差 ${CONFIG.buyCost - shown.player.gold} 金` : `購買 ${CONFIG.buyCost} 金`}</button>` : ''}
-    ${reward ? `<button class="buy-button" type="button" data-action="reward" data-id="${card.id}" data-focus="reward-${card.id}" aria-label="免費選擇${esc(card.region)}，0金幣"><span>免費選擇<small>0 金幣</small></span></button>` : ''}
+    ${offer ? `<button class="buy-button" type="button" data-action="buy" data-uid="${esc(offer.uid)}" data-focus="buy-${esc(offer.uid)}" ${disabled(!canBuy)} aria-label="購買${esc(card.region)}，${CONFIG.buyCost}金幣">${icon('coin')}${full && ownCount < 2 ? '備位已滿' : shown.player.gold < CONFIG.buyCost ? `還差 ${CONFIG.buyCost - shown.player.gold} 金` : `購買 ${CONFIG.buyCost} 金`}</button>` : ''}
+    ${reward ? `<button class="buy-button" type="button" data-action="reward" data-id="${card.id}" data-focus="reward-${card.id}" aria-label="免費選擇${esc(card.region)}，0金幣" ${disabled(!canReceiveUnit(shown, card.id))}><span>${canReceiveUnit(shown, card.id) ? '免費選擇' : '備位已滿'}<small>0 金幣</small></span></button>` : ''}
     ${selectable ? `<button class="card-detail-trigger" type="button" data-action="inspect" data-id="${card.id}" data-uid="${esc(unit.uid)}" data-focus="detail-${esc(unit.uid)}" aria-label="查看${esc(card.region)}完整技能">${icon('info')}</button>` : ''}
   </article>`;
 }
@@ -78,28 +79,31 @@ function hud() {
 function shopView() {
   const player = shown.player;
   const locked = busy || Boolean(shown.pendingReward);
-  const offers = shown.shop.offers;
-  return `<section class="shop-section panel" aria-labelledby="shop-title"><div class="section-heading"><div><span class="overline">你的下一手好牌</span><h1 id="shop-title" tabindex="-1" data-focus="shop-title">島嶼招募所 <small>${player.tier}階</small></h1></div><button class="upgrade-button" data-action="upgrade" data-focus="upgrade" ${disabled(locked || player.tier >= 4 || player.gold < player.upgradeCost)}>${icon('star')}${player.tier >= 4 ? '已達 4 階' : `升階 ${player.upgradeCost} 金`}</button></div><div class="shop-tools"><button class="small-button" data-action="refresh" data-focus="refresh" ${disabled(locked || player.gold < CONFIG.refreshCost)}>${icon('refresh')}刷新 ${CONFIG.refreshCost} 金</button><button class="small-button ${shown.shop.frozen ? 'is-frozen' : ''}" data-action="freeze" data-focus="freeze" aria-pressed="${shown.shop.frozen}" ${disabled(locked)}>${icon('lock')}${shown.shop.frozen ? '已凍結 · 解凍' : '凍結 · 免費'}</button><div class="shop-scroll-controls"><button class="small-button" data-action="shop-scroll" data-direction="-1" aria-label="上一組商店角色" data-focus="shop-prev">←</button><button class="small-button" data-action="shop-scroll" data-direction="1" aria-label="下一組商店角色" data-focus="shop-next">→</button></div><span>${shown.shop.frozen ? '下輪保留未買角色；刷新會解凍' : '同角 3 張，自動合成金卡'}</span></div><div class="card-rail shop-rail" aria-label="商店角色，左右滑動查看">${offers.map(offer => cardView(getCharacter(offer.cardId), { offer })).join('')}${Array.from({ length: CONFIG.shopSizes[player.tier - 1] - offers.length }, () => '<div class="sold-slot"><span>已招募</span><small>刷新或下輪補貨</small></div>').join('')}</div><p class="rail-hint">左右滑動看商店 · 點角色看完整技能</p></section>`;
+  const selectedInReserve = shown.player.bench.some(unit => String(unit.uid) === String(selectedUid));
+  const speech = shown.pendingReward ? '三張合一！來，挑一位免費夥伴。' : selectedInReserve ? '夥伴在等你，點下方棋盤把他擺上場。' : shown.player.board.length ? `已有 ${shown.player.board.length} 位夥伴上場，準備好了再開戰。` : shown.round === 1 && !unitList(shown).length ? '歡迎！先招募一位，親手擺上棋盤吧。' : '慢慢挑，這裡沒有倒數。站位由你決定。';
+  return `<section class="shop-section tavern-shop panel" aria-labelledby="shop-title"><header class="merchant-counter"><div class="merchant-portrait"><img src="${merchantUrl}" width="300" height="300" alt="旅店商人阿島" data-merchant></div><div class="merchant-intro"><span class="overline">阿島的旅店 · 第 ${shown.round} 輪備戰</span><h1 id="shop-title" tabindex="-1" data-focus="shop-title">島嶼旅店 <small>${player.tier} 階</small></h1><p>${speech}</p></div><div class="tavern-sign" aria-hidden="true"><span>嶼</span><small>旅人歇腳 · 英雄集合</small></div></header><div class="shop-tools"><span class="shop-tools-label">每位 3 金 · 招募到備位</span><button class="upgrade-button" data-action="upgrade" data-focus="upgrade" ${disabled(locked || player.tier >= 4 || player.gold < player.upgradeCost)}>${icon('star')}${player.tier >= 4 ? '最高 4 階' : `升階 ${player.upgradeCost} 金`}</button><button class="small-button" data-action="refresh" data-focus="refresh" ${disabled(locked || player.gold < CONFIG.refreshCost)}>${icon('refresh')}刷新 1 金</button><button class="small-button ${shown.shop.frozen ? 'is-frozen' : ''}" data-action="freeze" data-focus="freeze" aria-pressed="${shown.shop.frozen}" ${disabled(locked)}>${icon('lock')}${shown.shop.frozen ? '已鎖店' : '鎖店・免費'}</button></div><div class="card-rail shop-rail" aria-label="旅店角色，每頁可看三位">${shown.shop.offers.map(offer => cardView(getCharacter(offer.cardId), { offer })).join('')}${Array.from({ length: CONFIG.shopSizes[player.tier - 1] - shown.shop.offers.length }, () => '<div class="sold-slot"><span>已招募</span><small>刷新補貨</small></div>').join('')}</div><div class="shop-footer"><p class="rail-hint">${shown.shop.frozen ? '下輪保留未買角色；刷新會解鎖。' : '點角色看技能 · 招募先進備位'}</p>${CONFIG.shopSizes[player.tier - 1] > 3 ? `<div class="shop-page-controls"><button class="small-button" data-action="shop-scroll" data-direction="-1" aria-label="上一組旅店角色" data-focus="shop-prev">←</button><span>共 ${CONFIG.shopSizes[player.tier - 1]} 位</span><button class="small-button" data-action="shop-scroll" data-direction="1" aria-label="下一組旅店角色" data-focus="shop-next">→</button></div>` : ''}</div></section>`;
 }
 
 function lineUp(zone) {
   const units = shown.player[zone];
   const capacity = zone === 'board' ? CONFIG.boardSize : CONFIG.benchSize;
-  return `<div class="${zone === 'board' ? 'player-board board-rail' : 'player-bench bench-rail'} card-rail" aria-label="${zone === 'board' ? '上陣隊伍' : '備位'}">${Array.from({ length: capacity }, (_, index) => {
+  return `<div class="${zone === 'board' ? 'player-board board-rail' : 'player-bench bench-rail'} card-rail placement-row" aria-label="${zone === 'board' ? '上場棋盤，從左至右出手' : '備位'}">${Array.from({ length: capacity }, (_, index) => {
     const unit = units[index];
-    return unit ? cardView(getCharacter(unit.cardId), { unit, zone }) : `<button class="empty-slot" data-action="place" data-zone="${zone}" data-index="${index}" data-focus="slot-${zone}-${index}" ${disabled(!selectedUid || busy || shown.pendingReward)} aria-label="${zone === 'board' ? '上陣' : '備位'}第${index + 1}席，${selectedUid ? '移入已選角色' : '空席'}"><span>${String(index + 1).padStart(2, '0')}</span><strong>${zone === 'board' ? '上陣席位' : '備位'}</strong><small>${selectedUid ? '點此移入' : '等待夥伴'}</small></button>`;
+    const label = zone === 'board' ? `第 ${index + 1} 位` : `備位 ${index + 1}`;
+    const canPlace = Boolean(selectedUid) && index === units.length && String(units.at(-1)?.uid) !== String(selectedUid);
+    return `<div class="position-slot ${unit ? 'is-occupied' : 'is-empty'} ${canPlace ? 'can-place' : ''}" data-drop-zone="${zone}" data-drop-index="${index}"><span class="position-number">${label}${zone === 'board' && index < capacity - 1 ? '<i aria-hidden="true">→</i>' : ''}</span>${unit ? cardView(getCharacter(unit.cardId), { unit, zone, compact: true }) : `<button class="empty-slot" data-action="place" data-zone="${zone}" data-index="${index}" data-focus="slot-${zone}-${index}" ${disabled(!canPlace || busy)} aria-label="${label}，${canPlace ? '移入已選角色' : '等待前一個位置排滿'}"><span aria-hidden="true">${canPlace ? '＋' : '◇'}</span><strong>${canPlace ? '放這裡' : '等待夥伴'}</strong></button>`}</div>`;
   }).join('')}</div>`;
 }
 
 function unitActions() {
   const unit = selected();
-  if (!unit) return '<p class="arrange-hint">點角色選取，再點目標席位調整順序。</p>';
-  const locked = busy || Boolean(shown.pendingReward);
+  if (!unit) return '<p class="arrange-hint"><strong>親手擺上場</strong> 點備位角色，再點棋盤空位；也可以拖曳。隊伍依順序靠左排列。</p>';
+  const locked = busy;
   const zone = shown.player.board.includes(unit) ? 'board' : 'bench';
   const index = shown.player[zone].indexOf(unit);
   const other = zone === 'board' ? 'bench' : 'board';
   const capacity = other === 'board' ? CONFIG.boardSize : CONFIG.benchSize;
-  return `<div class="selection-actions"><strong>已選 ${esc(getCharacter(unit.cardId).region)}</strong><div><button data-action="shift" data-direction="-1" data-focus="move-left" ${disabled(locked || index === 0)}>← 前移</button><button data-action="shift" data-direction="1" data-focus="move-right" ${disabled(locked || index === shown.player[zone].length - 1)}>後移 →</button><button data-action="transfer" data-focus="transfer" ${disabled(locked || shown.player[other].length >= capacity)}>${other === 'board' ? '移至上陣' : '移至備位'}</button><button class="sell-button" data-action="sell" data-uid="${esc(unit.uid)}" data-focus="sell" ${disabled(locked)}>出售 ＋${CONFIG.sellValue} 金</button></div></div>`;
+  return `<div class="selection-actions"><strong>${esc(getCharacter(unit.cardId).region)}已選取 <small>點空位放置；點其他角色調位</small></strong><div><button data-action="shift" data-direction="-1" data-focus="move-left" ${disabled(locked || index === 0)}>← 前移</button><button data-action="shift" data-direction="1" data-focus="move-right" ${disabled(locked || index === shown.player[zone].length - 1)}>後移 →</button><button data-action="transfer" data-focus="transfer" ${disabled(locked || shown.player[other].length >= capacity)}>${other === 'board' ? '放上棋盤' : '撤回備位'}</button><button class="sell-button" data-action="sell" data-uid="${esc(unit.uid)}" data-focus="sell" ${disabled(locked)}>出售 ＋1 金</button><button data-action="unselect" data-focus="unselect">取消</button></div></div>`;
 }
 
 function synergies() {
@@ -107,7 +111,7 @@ function synergies() {
 }
 
 function teamView() {
-  return `<section class="team-section panel" aria-labelledby="team-title"><div class="section-heading"><div><span class="overline">從左到右，安排你的出手順序</span><h2 id="team-title" tabindex="-1" data-focus="team-title">你的主場 <small>${shown.player.board.length}/${CONFIG.boardSize} 上陣</small></h2></div></div>${lineUp('board')}${unitActions()}<div class="section-heading compact"><h2>備位 <small>${shown.player.bench.length}/${CONFIG.benchSize}</small></h2><span>備位不參戰、不計羈絆</span></div>${lineUp('bench')}${synergies()}</section>`;
+  return `<section class="team-section battle-table panel" aria-labelledby="team-title"><div class="section-heading"><div><span class="overline">上場後才會參戰 · 從左至右出手</span><h2 id="team-title" tabindex="-1" data-focus="team-title">你的棋盤 <small>${shown.player.board.length}／${CONFIG.boardSize} 位</small></h2></div><span class="board-direction">出手順序 <b>1 → 5</b></span></div>${lineUp('board')}${unitActions()}<div class="reserve-area"><div class="section-heading compact"><h2>備位 <small>${shown.player.bench.length}／${CONFIG.benchSize}</small></h2><span>買到這裡，再親手上場</span></div>${lineUp('bench')}</div>${synergies()}</section>`;
 }
 
 function preview() {
@@ -115,14 +119,15 @@ function preview() {
 }
 
 function recruitView() {
-  return `<div class="first-steps" aria-label="遊戲流程"><span><b>1</b> 招募角色</span><span><b>2</b> 編排羈絆</span><span><b>3</b> 自動對戰</span></div><div class="mobile-tabs" role="group" aria-label="準備桌分區"><button data-action="tab" data-view="shop" data-focus="tab-shop" aria-pressed="${mobileView === 'shop'}">招募商店</button><button data-action="tab" data-view="team" data-focus="tab-team" aria-pressed="${mobileView === 'team'}">隊伍 ${shown.player.board.length}/${CONFIG.boardSize}</button></div><main class="recruit-layout" data-mobile-view="${mobileView}">${shopView()}${teamView()}${preview()}</main><footer class="action-dock"><div><strong>${shown.pendingReward ? '金卡誕生！選一位免費夥伴' : shown.player.board.length ? `${shown.player.board.length} 位夥伴準備好了` : '先招募，或以空隊挑戰'}</strong><small>${shown.pendingReward ? '三選一獎勵，不花金幣' : '本輪剩餘金幣不保留到下一輪'}</small></div><button class="primary-button" data-action="${shown.pendingReward ? 'open-reward' : 'combat'}" data-focus="primary" ${disabled(busy)}>${shown.pendingReward ? '選擇免費角色' : '開始自動對戰'}${icon('arrow')}</button></footer>`;
+  const ready = shown.player.board.length > 0;
+  return `<nav class="first-steps" aria-label="備戰流程"><button data-action="section" data-section="shop"><b>1</b> 旅店招募</button><span aria-hidden="true">→</span><button data-action="section" data-section="team"><b>2</b> 親手擺位</button><span aria-hidden="true">→</span><span><b>3</b> 準備開戰</span></nav><main class="recruit-layout">${shopView()}${teamView()}${preview()}</main><footer class="action-dock recruit-dock"><div><strong>${shown.pendingReward ? '金卡誕生，選一位免費夥伴' : ready ? `${shown.player.board.length} 位上場 · 站位由你決定` : shown.player.bench.length ? '夥伴已招募，先擺上棋盤' : '先到旅店招募一位夥伴'}</strong><small>${shown.pendingReward ? '三選一獎勵，不花金幣' : '沒有倒數；按下準備開戰才會開始'}</small></div><button class="primary-button" data-action="${shown.pendingReward ? 'open-reward' : 'combat'}" data-focus="primary" ${disabled(busy || (!shown.pendingReward && !ready))}>${shown.pendingReward ? '選擇免費角色' : '準備好了，開戰'}${icon('arrow')}</button></footer>`;
 }
 
 function combatView() {
   const player = shown.combat?.player || shown.player.board;
   const enemy = shown.combat?.enemy || shown.opponent.board;
-  const row = (units, side) => `<div class="${side}-board combat-row">${Array.from({ length: CONFIG.boardSize }, (_, index) => units[index] ? cardView(getCharacter(units[index].cardId), { unit: units[index], compact: true }) : '<div class="combat-empty" aria-hidden="true"></div>').join('')}</div>`;
-  return `<main class="combat-stage"><div class="combat-heading" data-hero="enemy"><span class="overline">第 ${shown.round} 輪敵陣</span><h1>${esc(shown.opponent.name)}</h1></div>${row(enemy, 'enemy')}<div class="versus-line"><span></span><strong>自動對戰</strong><span></span></div>${row(player, 'player')}<p class="combat-caption">你的主場 · 角色依序出手，優先攻擊守護</p></main><footer class="action-dock combat-dock"><div><strong><span class="thinking-dot"></span> 自動對戰中</strong><small>傷勢只留在本場；招募隊伍會保留</small></div><button class="secondary-button" data-action="skip" data-focus="primary">快轉動畫 ${icon('arrow')}</button></footer>`;
+  const row = (units, side) => `<div class="${side}-board combat-row" aria-label="${side === 'player' ? '我方' : '敵方'}棋盤">${Array.from({ length: CONFIG.boardSize }, (_, index) => units[index] ? cardView(getCharacter(units[index].cardId), { unit: units[index], zone: 'combat', compact: true }) : '<div class="combat-empty" aria-hidden="true"><span>◇</span></div>').join('')}</div>`;
+  return `<main class="combat-stage combat-table"><div class="combat-heading" data-hero="enemy"><span class="overline">第 ${shown.round} 輪 · 敵方棋盤</span><h1>${esc(shown.opponent.name)}</h1></div>${row(enemy, 'enemy')}<div class="versus-line"><span></span><strong>碰撞、出招，守住主場。</strong><span></span></div>${row(player, 'player')}<p class="combat-caption">你的棋盤 · 攻擊、反擊與護盾逐步結算</p></main><footer class="action-dock combat-dock"><div><strong><span class="thinking-dot"></span> 正常速度 · 自動對戰中</strong><small>每次攻擊都會播放完整出手動作</small></div><button class="secondary-button skip-button" data-action="skip" data-focus="primary">略過動畫</button></footer>`;
 }
 
 function resultView() {
@@ -144,6 +149,7 @@ function render(preferredFocus = focusKey()) {
   if (renderedPhase && renderedPhase !== phase) window.scrollTo({ top: 0, behavior: 'instant' });
   renderedPhase = phase;
   updateShopControls();
+  effects.sync?.();
   if (preferredFocus) restoreFocus(preferredFocus);
 }
 
@@ -159,6 +165,7 @@ function stopPlayback() { playbackId++; effects.cancel(); busy = false; }
 async function act(action, ...args) {
   if (busy) return;
   const preferred = focusKey();
+  const previousUids = new Set(unitList(run).map(unit => unit.uid));
   const result = action(run, ...args);
   if (!result.ok) { announce(result.message); render(preferred); return; }
   persist();
@@ -173,10 +180,11 @@ async function act(action, ...args) {
         message = `${getCharacter(step.actor.cardId).region}出手，攻擊${getCharacter(step.target.cardId).region}。`;
         live.textContent = message;
       }
+      const updateAtImpact = step.type === 'damage';
+      if (updateAtImpact) { shown = step.snapshot; render(); }
       await effects.play(step, effects.capture());
       if (id !== playbackId) return;
-      shown = step.snapshot;
-      render();
+      if (!updateAtImpact) { shown = step.snapshot; render(); }
     }
   } finally {
     if (id === playbackId) {
@@ -185,7 +193,13 @@ async function act(action, ...args) {
       announce(result.message || '已完成操作。');
       if (!unitList(shown).some(unit => String(unit.uid) === String(selectedUid))) selectedUid = null;
       render(action === nextRound ? 'shop-title' : action === sell ? 'team-title' : focusKey() || preferred);
-      if (run.pendingReward) showReward();
+      if (action === buy || action === chooseTripleReward) {
+        const joined = unitList(run).find(unit => !previousUids.has(unit.uid));
+        if (run.pendingReward) { selectedUid = null; announce('三合一金卡完成，請選擇免費夥伴。'); render(); }
+        else if (joined && run.player.bench.includes(joined)) { selectedUid = joined.uid; announce(`${getCharacter(joined.cardId).region}已加入備位，點棋盤位置讓他上場。`); render(`unit-${joined.uid}`); app.querySelector('.team-section')?.scrollIntoView({ block: 'center', behavior: 'instant' }); }
+      }
+      if (action === moveUnit) { announce('站位已調整；準備好了再開戰。'); render(); }
+      if (run.pendingReward && ([buy, chooseTripleReward].includes(action) || run.pendingReward.choices.some(id => canReceiveUnit(run, id)))) showReward();
     }
   }
 }
@@ -206,10 +220,10 @@ function details(id, uid) {
 }
 function showReward() {
   if (!run.pendingReward) return;
-  openModal(`<div class="reward-dialog"><span class="overline">三合一金卡獎勵</span><h2 id="dialog-title">再選一位，免費加入主場。</h2><p>只選一張，0 金幣。獎勵需選完才能繼續。</p><div class="reward-choices">${run.pendingReward.choices.map(id => cardView(getCharacter(id), { reward: true })).join('')}</div></div>`);
+  openModal(`<div class="reward-dialog"><span class="overline">三合一金卡獎勵</span><h2 id="dialog-title">再選一位，免費加入主場。</h2><p>只選一張，0 金幣。${run.pendingReward.choices.every(id => !canReceiveUnit(run, id)) ? '備位已滿，先回棋盤上場或出售一位。' : '新夥伴先進備位，之後再擺上棋盤。'}</p><div class="reward-choices">${run.pendingReward.choices.map(id => cardView(getCharacter(id), { reward: true })).join('')}</div><button class="secondary-button reward-arrange" data-action="close-dialog">先回棋盤編排</button></div>`);
 }
 function rules() {
-  openModal(`<div class="rules-copy"><span class="overline">不用趕，沒有準備倒數</span><h2 id="dialog-title">招募、編排，交給夥伴出手。</h2><ol><li><strong>招募你的主場</strong><p>買角色 3 金、賣出得 1 金、刷新商店 1 金；凍結免費，下輪保留未買角色並補空位。刷新會解凍。</p></li><li><strong>編排 5 位夥伴</strong><p>5 位上陣、3 位備位。點一位再點目標席位調整順序；跨區會交換。2／4 位不同同羈絆角色可啟動效果，備位不計入。</p></li><li><strong>合金與升階</strong><p>同角色 3 張普通卡自動合為金卡，並免費三選一。升階會出現更高階角色；費用可在商店看到，每過一輪會下降。</p></li><li><strong>自動對戰，挑戰 10 輪</strong><p>按「開始自動對戰」後自動選目標，守護優先，角色交戰同時互相扣血。戰鬥傷勢不帶回招募。生命歸零即結束；第 10 輪必須獲勝且存活才通關。</p></li><li><strong>金幣與儲存</strong><p>下一輪才領新收入，剩餘金幣不保留。進度僅存此裝置／瀏覽器；戰鬥中重新整理會顯示已結算結果，不重複扣血或領錢。無法儲存時會明確提醒。</p></li></ol><button class="primary-button" data-action="close-dialog">知道了，回到主場</button></div>`);
+  openModal(`<div class="rules-copy"><span class="overline">不用趕，沒有準備倒數</span><h2 id="dialog-title">招募、編排，交給夥伴出手。</h2><ol><li><strong>招募你的主場</strong><p>每次購買先進備位，再親手放上棋盤。買角色 3 金、賣出得 1 金、刷新商店 1 金；凍結免費，下輪保留未買角色並補空位。刷新會解凍。</p></li><li><strong>編排 5 位夥伴</strong><p>5 位上陣、3 位備位。點一位再點目標席位調整順序；跨區會交換。2／4 位不同同羈絆角色可啟動效果，備位不計入。</p></li><li><strong>合金與升階</strong><p>同角色 3 張普通卡自動合為金卡，並免費三選一。升階會出現更高階角色；費用可在商店看到，每過一輪會下降。</p></li><li><strong>自動對戰，挑戰 10 輪</strong><p>按「準備好了，開戰」後自動選目標，守護優先，角色交戰同時互相扣血。戰鬥傷勢不帶回招募。生命歸零即結束；第 10 輪必須獲勝且存活才通關。</p></li><li><strong>金幣與儲存</strong><p>下一輪才領新收入，剩餘金幣不保留。進度僅存此裝置／瀏覽器；戰鬥中重新整理會顯示已結算結果，不重複扣血或領錢。無法儲存時會明確提醒。</p></li></ol><button class="primary-button" data-action="close-dialog">知道了，回到主場</button></div>`);
 }
 function newRun() {
   stopPlayback();
@@ -217,7 +231,6 @@ function newRun() {
   run = createRun();
   shown = structuredClone(run);
   selectedUid = null;
-  mobileView = 'shop';
   persist();
   dialog.close();
   announce('新的冒險開始。先招募一位角色，搭配你的主場。');
@@ -243,17 +256,19 @@ document.addEventListener('click', event => {
   }
   if (action === 'new-run') { newRun(); return; }
   if (action === 'skip') { stopPlayback(); shown = structuredClone(run); announce('已快轉動畫，這是本場結算結果。'); render('primary'); return; }
-  if (action === 'tab' && run.phase === 'recruit') { mobileView = button.dataset.view; render(`tab-${mobileView}`); return; }
+  if (action === 'section') { app.querySelector(button.dataset.section === 'shop' ? '.shop-section' : '.team-section')?.scrollIntoView({ block: 'start', behavior: 'instant' }); return; }
   if (busy) return;
   if (action === 'shop-scroll') { const rail = app.querySelector('.shop-rail'); rail?.scrollBy({ left: Number(button.dataset.direction) * rail.clientWidth * .85, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' }); return; }
   if (action === 'open-reward') { showReward(); return; }
   if (action === 'reward') { dialog.close(); act(chooseTripleReward, Number(button.dataset.id)); return; }
-  if (action === 'next') { selectedUid = null; mobileView = 'shop'; act(nextRound); return; }
-  if (!isRecruit() || run.pendingReward) return;
+  if (action === 'next') { selectedUid = null; act(nextRound); return; }
+  if (!isRecruit()) return;
+  if (run.pendingReward && ['buy', 'refresh', 'freeze', 'upgrade', 'combat'].includes(action)) return;
   if (action === 'buy') { act(buy, run.shop.offers.find(item => String(item.uid) === button.dataset.uid)?.uid); return; }
   if (action === 'refresh') { act(refreshShop); return; }
   if (action === 'freeze') { act(toggleFreeze); return; }
   if (action === 'upgrade') { act(upgradeTavern); return; }
+  if (action === 'unselect') { selectedUid = null; announce('已取消選取。'); render(); return; }
   if (action === 'sell') { act(sell, selected()?.uid); return; }
   if (action === 'select') {
     const unit = unitList(run).find(item => String(item.uid) === button.dataset.uid);
@@ -269,13 +284,44 @@ document.addEventListener('click', event => {
   if (action === 'transfer' && selected()) { const unit = selected(); const zone = shown.player.board.includes(unit) ? 'bench' : 'board'; act(moveUnit, unit.uid, zone, shown.player[zone].length); return; }
   if (action === 'combat') {
     selectedUid = null;
-    if (!run.player.board.length) { openModal('<div class="confirm-dialog"><span class="overline">目前沒有上陣角色</span><h2 id="dialog-title">仍要以空隊進入對戰？</h2><p>你可能會失去生命，但仍可繼續下一輪招募。</p><div><button class="secondary-button" data-action="close-dialog">回去編排</button><button class="primary-button" data-action="confirm-combat">空隊出戰</button></div></div>'); return; }
+    if (!run.player.board.length) { announce('先把備位角色放上棋盤，才能開戰。'); render(); return; }
     act(startCombat);
   }
-  if (action === 'confirm-combat') { dialog.close(); act(startCombat); }
 });
+document.addEventListener('dragstart', event => {
+  const card = event.target.closest('[data-drag-uid]');
+  if (!card || !isRecruit()) { event.preventDefault(); return; }
+  draggedUid = unitList(run).find(unit => String(unit.uid) === card.dataset.dragUid)?.uid;
+  if (!draggedUid) return;
+  selectedUid = draggedUid;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setDragImage?.(card, card.clientWidth / 2, card.clientHeight / 2);
+  event.dataTransfer.setData('text/plain', String(draggedUid));
+  card.classList.add('is-dragging');
+});
+function clearDrag() { draggedUid = null; app.querySelectorAll('.drag-target,.is-dragging').forEach(node => node.classList.remove('drag-target', 'is-dragging')); }
+app.addEventListener('dragover', event => {
+  const slot = event.target.closest('[data-drop-zone]');
+  if (!slot || !draggedUid || busy || Number(slot.dataset.dropIndex) > run.player[slot.dataset.dropZone].length) return;
+  if (Number(slot.dataset.dropIndex) === run.player[slot.dataset.dropZone].length && run.player[slot.dataset.dropZone].at(-1)?.uid === draggedUid) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  app.querySelectorAll('.drag-target').forEach(node => node.classList.remove('drag-target'));
+  slot.classList.add('drag-target');
+});
+app.addEventListener('drop', event => {
+  const slot = event.target.closest('[data-drop-zone]');
+  if (!slot || !draggedUid || busy || Number(slot.dataset.dropIndex) > run.player[slot.dataset.dropZone].length) return;
+  if (Number(slot.dataset.dropIndex) === run.player[slot.dataset.dropZone].length && run.player[slot.dataset.dropZone].at(-1)?.uid === draggedUid) return;
+  event.preventDefault();
+  const uid = draggedUid;
+  clearDrag();
+  act(moveUnit, uid, slot.dataset.dropZone, Math.min(Number(slot.dataset.dropIndex), run.player[slot.dataset.dropZone].length));
+});
+document.addEventListener('dragend', clearDrag);
 document.addEventListener('error', event => {
   const image = event.target;
+  if (image.matches?.('img[data-merchant]') && !image.dataset.fallback) { image.dataset.fallback = 'true'; image.src = imageUrl(14, true); return; }
   if (!image.matches?.('img[data-art-id]') || image.dataset.fallback) return;
   image.dataset.fallback = 'true';
   image.src = new URL(`../../characters/portrait-${String(Number(image.dataset.artId) === 101 ? 13 : image.dataset.artId).padStart(2, '0')}.png`, import.meta.url).href;

@@ -54,9 +54,9 @@ function action(state, phases, run, record = true) {
     return { ok: false, message: error.message, events: [], timeline: [] };
   } finally { contexts.delete(state); }
 }
-function recruitAction(state, run) {
+function recruitAction(state, run, allowReward = false) {
   return action(state, ['recruit'], () => {
-    requireRule(!state.pendingReward, '請先選擇三合一獎勵。');
+    requireRule(allowReward || !state.pendingReward, '請先選擇三合一獎勵。');
     run();
   });
 }
@@ -110,7 +110,7 @@ export function createRun({ seed = Date.now() >>> 0 } = {}) {
   };
   fillShop(state);
   state.opponent = makeOpponent(state);
-  note(state, '第 1 輪招募：買進角色、調整站位，再開始戰鬥。');
+  note(state, '第 1 輪招募：角色先進備戰區，手動上場、調整站位，再準備開戰。');
   return state;
 }
 function spend(state, amount) {
@@ -146,10 +146,12 @@ function mergeTriple(state, cardId, changes) {
   emit(state, 'triple', 'player', { actor: entity(state, 'player', golden, zone), target: entity(state, 'player', golden, zone), changes });
   return { unit: golden, zone, merged: true };
 }
+export function canReceiveUnit(state, cardId) {
+  return state.player.bench.length < CONFIG.benchSize || owned(state).filter(unit => unit.cardId === cardId && !unit.golden).length >= 2;
+}
 function addOwned(state, cardId, changes = []) {
-  const twins = owned(state).filter(unit => unit.cardId === cardId && !unit.golden).length;
-  requireRule(state.player.board.length < CONFIG.boardSize || state.player.bench.length < CONFIG.benchSize || twins >= 2, '上陣與備位已滿，先出售或合成。');
-  const zone = state.player.board.length < CONFIG.boardSize ? 'board' : 'bench';
+  requireRule(canReceiveUnit(state, cardId), '備戰區已滿，請先上場、出售角色，或招募可三合一的角色。');
+  const zone = 'bench';
   const unit = makeUnit(state, cardId);
   state.player[zone].push(unit);
   return mergeTriple(state, cardId, changes) || { unit, zone, merged: false };
@@ -177,7 +179,7 @@ export function sell(state, unitUid) {
     const change = delta(entity(state, 'player'), state.player, 'gold', state.player.gold + CONFIG.sellValue);
     note(state, `出售${name(unit)}，獲得 ${CONFIG.sellValue} 金幣。`);
     emit(state, 'sell', 'player', { target, changes: [change] });
-  });
+  }, true);
 }
 export function refreshShop(state) {
   return recruitAction(state, () => {
@@ -220,7 +222,7 @@ export function moveUnit(state, unitUid, toZone, toIndex) {
     else { source.splice(fromIndex, 1); destination.push(unit); }
     note(state, `${name(unit)}已調整站位。`);
     emit(state, 'move', 'player', { target: entity(state, 'player', unit, toZone) });
-  });
+  }, true);
 }
 export function chooseTripleReward(state, cardId) {
   return action(state, ['recruit'], () => {
@@ -364,6 +366,7 @@ function attackOnce(state, side, unit) {
 export function startCombat(state, { recordTimeline = true } = {}) {
   return action(state, ['recruit'], () => {
     requireRule(!state.pendingReward, '請先選擇三合一獎勵。');
+    requireRule(state.player.board.length > 0, state.player.bench.length ? '請先從備戰區選一位角色，上場後再準備開戰。' : '請先招募一位角色，放上棋盤後再準備開戰。');
     const battleUnits = units => units.map((unit, order) => ({ ...clone(unit), hp: unit.maxHp, shield: getCharacter(unit.cardId).keywords.includes('shield') ? 1 : 0, order, attacks: 0 }));
     state.phase = 'combat';
     state.combat = { player: battleUnits(state.player.board), enemy: battleUnits(state.opponent.board), activeSide: 'player', attacks: 0, rngState: roundSeed(state.seed, state.round, 0xBA771E), traits: {}, tideUsed: { player: false, enemy: false } };

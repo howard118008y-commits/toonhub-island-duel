@@ -22,10 +22,7 @@ export function createBattleEffects({ root }) {
   const animations = new Set();
   const timers = new Set();
   const waiters = new Map();
-  let keyboard = false;
   let repositionFrame = null;
-  doc.addEventListener('keydown', () => { keyboard = true; });
-  doc.addEventListener('pointerdown', () => { keyboard = false; });
 
   function capture() {
     const frame = { entities: new Map(), slots: new Map(), energy: new Map() };
@@ -81,8 +78,28 @@ export function createBattleEffects({ root }) {
 
   function remove(item) {
     for (const timer of item.timers) { win.clearTimeout(timer); timers.delete(timer); }
+    for (const [element, visibility] of item.hidden || []) element.style.visibility = visibility;
     item.node.remove();
     items.delete(item);
+  }
+
+  function sync() {
+    const frame = capture();
+    for (const item of items) {
+      if (item.kind !== 'ghost') continue;
+      const element = frame.entities.get(keyOf(item.entity))?.element;
+      if (!element) continue;
+      if (!item.hidden.has(element)) item.hidden.set(element, element.style.visibility || '');
+      element.style.visibility = 'hidden';
+      for (const selector of ['.attack-stat', '.health-stat']) {
+        const current = element.querySelector(selector);
+        const displayed = item.node.querySelector(selector);
+        if (current && displayed) {
+          displayed.className = current.className;
+          displayed.querySelector('b').textContent = current.querySelector('b').textContent;
+        }
+      }
+    }
   }
 
   function position(item, frame) {
@@ -135,7 +152,7 @@ export function createBattleEffects({ root }) {
     layer.append(node);
     items.add(item);
     position(item, frame);
-    const reduce = reducedMotion.matches || keyboard;
+    const reduce = reducedMotion.matches;
     motion(node, reduce ? [{ opacity: 0 }, { opacity: 1 }] : [
       { opacity: 0, transform: 'translateY(10px) scale(.96)' },
       { opacity: 1, transform: 'translateY(0) scale(1)' },
@@ -153,7 +170,7 @@ export function createBattleEffects({ root }) {
     const card = getCard(entity.cardId);
     const text = characterVoice(entity.cardId, kind);
     if (!text) return;
-    const item = popup(`${card?.region || '角色'}：${text}`, 'speech', entity, frame);
+    const item = popup(`${card?.region || '角色'}：${text}`, 'speech', entity, frame, { life: 1200 });
     if (item) item.node.dataset.voice = kind;
   }
 
@@ -170,7 +187,10 @@ export function createBattleEffects({ root }) {
     layer.append(node);
     const item = { node, kind: 'outline', entity, timers: [] };
     items.add(item);
-    motion(node, [{ opacity: 0 }, { opacity: 1, offset: .3 }, { opacity: 0 }], duration);
+    motion(node, ['impact', 'guard'].includes(kind) && !reducedMotion.matches ? [
+      { opacity: 1, transform: 'scale(.9)' },
+      { opacity: 0, transform: 'scale(1.14)' },
+    ] : [{ opacity: 0 }, { opacity: 1, offset: .3 }, { opacity: 0 }], duration);
     item.timers.push(later(() => remove(item), duration));
   }
 
@@ -178,7 +198,7 @@ export function createBattleEffects({ root }) {
     const from = anchor(actor, frame);
     const to = anchor(target, frame);
     if (!from?.element || !to) return;
-    if (reducedMotion.matches || keyboard) { outline(actor, frame, 'attack', 240); return; }
+    if (reducedMotion.matches) { outline(actor, frame, 'attack', 350); outline(target, frame, 'hit', 350); return; }
     const ghost = from.element.cloneNode(true);
     ghost.removeAttribute('data-card-uid');
     ghost.removeAttribute('id');
@@ -188,19 +208,20 @@ export function createBattleEffects({ root }) {
     ghost.classList.add('battle-fx-ghost');
     ghost.dataset.effect = 'attack';
     ghost.inert = true;
-    Object.assign(ghost.style, { left: `${from.rect.left}px`, top: `${from.rect.top}px`, width: `${from.rect.width}px`, height: `${from.rect.height}px` });
+    Object.assign(ghost.style, { left: `${from.rect.left}px`, top: `${from.rect.top}px`, width: `${from.rect.width}px`, height: `${from.rect.height}px`, visibility: 'visible' });
     layer.append(ghost);
-    const item = { node: ghost, kind: 'ghost', entity: actor, timers: [] };
+    const item = { node: ghost, kind: 'ghost', entity: actor, timers: [], hidden: new Map() };
     items.add(item);
+    sync();
     const dx = to.rect.left + to.rect.width / 2 - from.rect.left - from.rect.width / 2;
     const dy = to.rect.top + to.rect.height / 2 - from.rect.top - from.rect.height / 2;
-    const fraction = Math.min(1, 90 / Math.max(1, Math.hypot(dx, dy)));
     motion(ghost, [
+      { transform: 'translate(0,0) scale(1)', easing: EASE_MOVE },
+      { transform: `translate(${dx}px,${dy}px) scale(1.04)`, offset: .5, easing: EASE_MOVE },
       { transform: 'translate(0,0) scale(1)' },
-      { transform: `translate(${dx * fraction}px,${dy * fraction}px) scale(1.04)`, offset: .5 },
-      { transform: 'translate(0,0) scale(1)' },
-    ], 240, EASE_MOVE);
-    item.timers.push(later(() => remove(item), 240));
+    ], 700, 'linear');
+    item.timers.push(later(() => outline(target, capture(), 'impact', 260), 350));
+    item.timers.push(later(() => remove(item), 700));
   }
 
   function play(step, beforeFrame = capture()) {
@@ -210,14 +231,14 @@ export function createBattleEffects({ root }) {
     if (step.type === 'attack') {
       charge(step.actor, step.target, beforeFrame);
       speak(step.actor, 'attack', beforeFrame);
-      duration = 240;
+      duration = 350;
     } else if (step.type === 'guard' || step.type === 'shield') {
       const blocked = changes.some(change => change.field === 'shield' && change.amount < 0);
       const guard = popup(`🛡\n${step.type === 'shield' ? blocked ? '護盾抵擋' : '獲得護盾' : '守護承擋'}`, 'guard', target, beforeFrame, { life: 760 });
       if (guard && step.type === 'shield') guard.node.dataset.shieldState = blocked ? 'blocked' : 'gained';
-      outline(target, beforeFrame, 'guard', 200);
+      outline(target, beforeFrame, 'guard', 350);
       speak(target, 'defend', beforeFrame);
-      duration = 200;
+      duration = blocked && [...items].some(item => item.kind === 'ghost') ? 0 : 250;
     } else if (['summon', 'buy', 'reward', 'triple'].includes(step.type)) {
       outline(target, beforeFrame, 'summon', 200);
       speak(target, 'summon', beforeFrame);
@@ -225,11 +246,11 @@ export function createBattleEffects({ root }) {
       duration = 200;
     } else if (step.type === 'death') {
       const element = anchor(target, beforeFrame)?.element;
-      if (element) motion(element, reducedMotion.matches || keyboard
+      if (element) motion(element, reducedMotion.matches
         ? [{ opacity: 1 }, { opacity: .2 }]
-        : [{ opacity: 1, transform: 'scale(1)' }, { opacity: .2, transform: 'scale(.96)' }], 180);
-      outline(target, beforeFrame, 'death', 180);
-      duration = 180;
+        : [{ opacity: 1, transform: 'scale(1)' }, { opacity: .2, transform: 'scale(.96)' }], 260);
+      outline(target, beforeFrame, 'death', 260);
+      duration = 260;
     }
     let voices = 0;
     for (const change of changes) {
@@ -240,13 +261,13 @@ export function createBattleEffects({ root }) {
         outline(change.target, beforeFrame, hurt ? 'hit' : 'heal', 180);
         if (hurt) {
           const element = anchor(change.target, beforeFrame)?.element;
-          if (element && !(reducedMotion.matches || keyboard)) motion(element, [
+          if (element && !reducedMotion.matches) motion(element, [
             { transform: 'translateX(0)' }, { transform: 'translateX(-4px)', offset: .25 },
             { transform: 'translateX(4px)', offset: .5 }, { transform: 'translateX(-2px)', offset: .75 }, { transform: 'translateX(0)' },
           ], 180, EASE_MOVE);
           if (voices++ < 2) speak(change.target, 'hurt', beforeFrame);
         }
-        duration = Math.max(duration, 180);
+        duration = Math.max(duration, 450);
       } else if (change.field === 'gold') {
         popup(`${change.amount < 0 ? '−' : '+'}${Math.abs(change.amount)} 金幣`, 'gold', change.target, beforeFrame, { energy: true });
         duration = Math.max(duration, 160);
@@ -287,5 +308,5 @@ export function createBattleEffects({ root }) {
   }
   win.addEventListener('resize', reposition);
   doc.addEventListener('scroll', reposition, true);
-  return { capture, play, cancel };
+  return { capture, play, cancel, sync };
 }

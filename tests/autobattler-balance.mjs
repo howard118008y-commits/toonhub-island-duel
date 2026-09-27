@@ -45,12 +45,12 @@ function offerValue(state,id,focus,blind){
 }
 function recruit(state, focus, blind){
  let actions=0;
- while(state.pendingReward&&actions++<20){const choices=state.pendingReward.choices;chooseTripleReward(state,[...choices].sort((a,b)=>offerValue(state,b,focus,blind)-offerValue(state,a,focus,blind))[0]);}
+ while(state.pendingReward&&actions++<20){arrange(state,focus,blind);const choices=state.pendingReward.choices;chooseTripleReward(state,[...choices].sort((a,b)=>offerValue(state,b,focus,blind)-offerValue(state,a,focus,blind))[0]);}
  arrange(state,focus,blind);
  const targetTier=state.round>=7?4:state.round>=4?3:state.round>=2?2:1;
  if(state.player.tier<targetTier&&state.player.gold>=state.player.upgradeCost)upgradeTavern(state);
  for(;actions<50;actions++){
-  if(state.pendingReward){chooseTripleReward(state,[...state.pendingReward.choices].sort((a,b)=>offerValue(state,b,focus,blind)-offerValue(state,a,focus,blind))[0]);arrange(state,focus,blind);continue;}
+  if(state.pendingReward){arrange(state,focus,blind);chooseTripleReward(state,[...state.pendingReward.choices].sort((a,b)=>offerValue(state,b,focus,blind)-offerValue(state,a,focus,blind))[0]);arrange(state,focus,blind);continue;}
   const all=held(state);
   if(state.player.gold>=3&&state.shop.offers.length){
    const offers=[...state.shop.offers].sort((a,b)=>offerValue(state,b.cardId,focus,blind)-offerValue(state,a.cardId,focus,blind));

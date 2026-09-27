@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG, ROSTER, TRAITS, getCharacter } from '../public/game/src/roster.js';
-import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUnit, chooseTripleReward, startCombat, nextRound, getSynergies, validateRun } from '../public/game/src/autobattler.js';
+import { createRun, buy, sell, refreshShop, toggleFreeze, upgradeTavern, moveUnit, canReceiveUnit, chooseTripleReward, startCombat, nextRound, getSynergies, validateRun } from '../public/game/src/autobattler.js';
 import { STORAGE_KEY, saveRun, loadRun, clearRun } from '../public/game/src/storage.js';
 const copy = value => structuredClone(value);
 function unit(state, cardId, extra = {}) {
@@ -20,9 +20,9 @@ test('24 identities form 4 tiers x 6 factions; deterministic initial run',()=>{
 });
 
 test('buy/sell/refresh costs, no profit loop, and invalid actions are atomic',()=>{
- const s=createRun({seed:2});const first=s.shop.offers[0];assert(buy(s,first.uid).ok);assert.equal(s.player.gold,0);assert.equal(s.player.board.length,1);
- failedUnchanged(s,()=>buy(s,s.shop.offers[0].uid));failedUnchanged(s,()=>refreshShop(s));failedUnchanged(s,()=>buy(s,'missing'));failedUnchanged(s,()=>moveUnit(s,s.player.board[0].uid,'board',0));
- assert(sell(s,s.player.board[0].uid).ok);assert.equal(s.player.gold,1);assert(refreshShop(s).ok);assert.equal(s.player.gold,0);assert.equal(s.player.board.length,0);assert.equal(validateRun(s).ok,true);
+ const s=createRun({seed:2});const first=s.shop.offers[0];assert(buy(s,first.uid).ok);assert.equal(s.player.gold,0);assert.equal(s.player.board.length,0);assert.equal(s.player.bench.length,1);
+ failedUnchanged(s,()=>buy(s,s.shop.offers[0].uid));failedUnchanged(s,()=>refreshShop(s));failedUnchanged(s,()=>buy(s,'missing'));failedUnchanged(s,()=>moveUnit(s,s.player.bench[0].uid,'bench',0));
+ assert(sell(s,s.player.bench[0].uid).ok);assert.equal(s.player.gold,1);assert(refreshShop(s).ok);assert.equal(s.player.gold,0);assert.equal(s.player.board.length,0);assert.equal(validateRun(s).ok,true);
 });
 
 test('freeze preserves remaining offers once, gold resets, upgrade discount and shop capacity',()=>{
@@ -94,12 +94,12 @@ test('shield snapshots do not announce HP loss early; simultaneous lethal hits c
 
 test('zero-attack stalemate is bounded and hero result damage uses actual HP lost',()=>{
  const s=createRun({seed:34});s.player.board=[unit(s,9,{attack:0})];s.opponent.board=[unit(s,5,{attack:0})];assert(startCombat(s,{recordTimeline:false}).ok);assert.equal(s.combat.attacks,CONFIG.maxAttacks);assert.equal(s.result.reason,'stalemate');assert.equal(s.result.outcome,'draw');assert.equal(s.player.hp,24);
- const dead=createRun({seed:35});dead.player.hp=1;const r=startCombat(dead);assert.equal(dead.result.damage,1);assert.equal(r.timeline.find(step=>step.type==='damage'&&step.target?.kind==='hero').changes[0].amount,-1);
+ const dead=createRun({seed:35});dead.player.hp=1;dead.player.board=[unit(dead,9,{attack:1,hp:1,maxHp:1})];dead.opponent.board=[unit(dead,9,{attack:100,hp:100,maxHp:100})];const r=startCombat(dead);assert.equal(dead.result.damage,1);assert.equal(r.timeline.find(step=>step.type==='damage'&&step.target?.kind==='hero').changes[0].amount,-1);
 });
 
 test('hero death stops the run; round 10 requires a win, never an endless extra round',()=>{
- const dead=createRun({seed:11});dead.player.hp=1;startCombat(dead);assert.equal(dead.phase,'gameover');assert.equal(dead.winner,'enemy');failedUnchanged(dead,()=>nextRound(dead));
- for(const win of [true,false]){const s=createRun({seed:12});s.round=10;s.opponent.round=10;s.player.income=10;if(win)s.player.board=[unit(s,3,{attack:1000,hp:1000,maxHp:1000})];else s.opponent.board=[];startCombat(s);assert.equal(s.phase,'gameover');assert.equal(s.winner,win?'player':'enemy');assert.equal(s.result.outcome,win?'win':'draw');failedUnchanged(s,()=>nextRound(s));}
+ const dead=createRun({seed:11});dead.player.hp=1;dead.player.board=[unit(dead,9,{attack:1,hp:1,maxHp:1})];dead.opponent.board=[unit(dead,9,{attack:100,hp:100,maxHp:100})];startCombat(dead);assert.equal(dead.phase,'gameover');assert.equal(dead.winner,'enemy');failedUnchanged(dead,()=>nextRound(dead));
+ for(const win of [true,false]){const s=createRun({seed:12});s.round=10;s.opponent.round=10;s.player.income=10;if(win)s.player.board=[unit(s,3,{attack:1000,hp:1000,maxHp:1000})];else{s.player.board=[unit(s,9,{attack:1,hp:1,maxHp:1})];s.opponent.board=[unit(s,9,{attack:1,hp:1,maxHp:1})];}startCombat(s);assert.equal(s.phase,'gameover');assert.equal(s.winner,win?'player':'enemy');assert.equal(s.result.outcome,win?'win':'draw');failedUnchanged(s,()=>nextRound(s));}
 });
 
 test('storage rejects corrupted/versioned/invalid data and unavailable/quota storage remains nonblocking',()=>{
@@ -107,4 +107,34 @@ test('storage rejects corrupted/versioned/invalid data and unavailable/quota sto
  for(const raw of ['{',JSON.stringify({version:0,state:s}),JSON.stringify({version:1,savedAt:0,state:{...s,round:99}})]){store.setItem(STORAGE_KEY,raw);assert.equal(loadRun(store).status,'invalid');}
  for(const mutate of [x=>x.player.gold=-1,x=>x.player.hp=25,x=>x.player.maxHp=25,x=>x.player.gold=NaN,x=>x.player.tier=Infinity,x=>x.shop.offers[0].cardId=999,x=>x.nextUid=1,x=>x.player.board=Array(6).fill(unit(x,3)),x=>x.player.board=[unit(x,3,{uid:x.shop.offers[0].uid})],x=>x.phase='combat']){const bad=copy(s);mutate(bad);assert.equal(validateRun(bad).ok,false);assert.equal(saveRun(bad,store).ok,false);}
  const blocked={getItem(){throw new Error('blocked');},setItem(){throw new Error('quota');},removeItem(){throw new Error('blocked');}};assert.equal(loadRun(blocked).status,'unavailable');assert.equal(saveRun(s,blocked).ok,false);assert.equal(clearRun(blocked).ok,false);assert.equal(buy(s,s.shop.offers[0].uid).ok,true);
+});
+
+
+test('recruitment waits for manual deployment and combat; reload preserves preparation',()=>{
+ const s=createRun({seed:51});assert.equal(s.phase,'recruit');failedUnchanged(s,()=>startCombat(s));
+ const purchase=buy(s,s.shop.offers[0].uid);assert(purchase.ok);assert.equal(purchase.timeline[0].target.zone,'bench');assert.equal(s.player.board.length,0);assert.equal(s.player.bench.length,1);assert.equal(s.phase,'recruit');assert.equal(s.combat,null);
+ failedUnchanged(s,()=>startCombat(s));const store=fakeStorage();assert(saveRun(s,store).ok);const restored=loadRun(store).state;assert.deepEqual(restored,s);
+ assert(moveUnit(restored,restored.player.bench[0].uid,'board',0).ok);assert.equal(restored.player.bench.length,0);assert.equal(restored.player.board.length,1);assert.equal(restored.phase,'recruit');assert.equal(restored.combat,null);
+ assert(saveRun(restored,store).ok);assert.deepEqual(loadRun(store).state,restored);assert(startCombat(restored).ok);assert.equal(restored.phase,'result');assert(nextRound(restored).ok);assert.equal(restored.phase,'recruit');assert.equal(restored.combat,null);
+});
+
+test('full bench never silently deploys a purchase into an empty board slot',()=>{
+ const s=createRun({seed:52});s.player.bench=[3,4,5].map(id=>unit(s,id));s.player.gold=6;const id=offer(s,6);assert.equal(canReceiveUnit(s,6),false);
+ failedUnchanged(s,()=>buy(s,id));assert.equal(s.player.board.length,0);assert(moveUnit(s,s.player.bench[0].uid,'board',0).ok);assert.equal(canReceiveUnit(s,6),true);assert(buy(s,id).ok);assert.equal(s.player.board.length,1);assert.equal(s.player.bench.at(-1).cardId,6);assert.equal(validateRun(s).ok,true);
+});
+
+test('full bench triple rewards can free a slot by deployment or sale without deadlock',()=>{
+ for(const release of ['move','sell']){
+  const s=createRun({seed:53});s.player.board=[3,3,4,5,6].map(id=>unit(s,id));s.player.bench=[7,8,9].map(id=>unit(s,id));assert.equal(canReceiveUnit(s,3),true);assert(buy(s,offer(s,3)).ok);assert.equal(s.player.board.length,4);assert.equal(s.player.bench.length,3);assert(s.pendingReward);
+  const reward=s.pendingReward.choices.find(id=>!canReceiveUnit(s,id));assert(reward);failedUnchanged(s,()=>chooseTripleReward(s,reward));failedUnchanged(s,()=>startCombat(s));failedUnchanged(s,()=>refreshShop(s));
+  const store=fakeStorage();assert(saveRun(s,store).ok);assert.deepEqual(loadRun(store).state,s);const savedGold=s.player.gold;
+  assert(release==='move'?moveUnit(s,s.player.bench[0].uid,'board',s.player.board.length).ok:sell(s,s.player.bench[0].uid).ok);assert(s.pendingReward);assert.equal(canReceiveUnit(s,reward),true);assert(chooseTripleReward(s,reward).ok);assert.equal(s.pendingReward,null);assert.equal(s.player.bench.at(-1).cardId,reward);assert.equal(s.player.gold,savedGold+(release==='sell'?1:0));assert.equal(validateRun(s).ok,true);
+ }
+});
+
+test('deployment order, bench swaps and left-right movement survive save and combat entry',()=>{
+ const s=createRun({seed:54});s.player.bench=[3,6,9].map(id=>unit(s,id));const [a,b,c]=s.player.bench.map(u=>u.uid);
+ assert(moveUnit(s,a,'board',0).ok);assert(moveUnit(s,b,'board',1).ok);assert(moveUnit(s,c,'board',2).ok);assert(moveUnit(s,c,'board',0).ok);assert.deepEqual(s.player.board.map(u=>u.uid),[c,a,b]);
+ assert(moveUnit(s,a,'bench',0).ok);assert(moveUnit(s,b,'bench',0).ok);assert.deepEqual(s.player.board.map(u=>u.uid),[c,a]);assert.deepEqual(s.player.bench.map(u=>u.uid),[b]);
+ const store=fakeStorage();assert(saveRun(s,store).ok);const resumed=loadRun(store).state;assert.deepEqual(resumed.player,s.player);const result=startCombat(resumed);assert(result.ok);assert.deepEqual(result.timeline[0].snapshot.combat.player.map(u=>u.uid),[c,a]);assert.deepEqual(resumed.player.board,s.player.board);assert.deepEqual(resumed.player.bench,s.player.bench);
 });
